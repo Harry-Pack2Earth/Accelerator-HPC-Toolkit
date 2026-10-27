@@ -18,12 +18,16 @@ Open Claude Code in an empty folder and paste:
 > running on MareNostrum 5. My cluster username is `abc123456`.
 
 It will do everything below except the two things only you can do: upload your SSH key in the BSC portal
-(it will tell you exactly how, then wait) and say yes before anything is submitted.
+(if you have not, it stops and tells you exactly how) and say yes before anything real is submitted. The
+first tiny test job goes on its own: it costs under half a CPU-hour and proves the whole path.
 
-**If you are the agent reading this:** `git clone` this repository, copy `skills/mn5-first-job` to
-`~/.claude/skills/` (so it is there for later sessions), then open
-`skills/mn5-first-job/SKILL.md` from the clone and follow it from Step 0, running its scripts by path. Do not
-improvise around it; it encodes rules that each cost someone a day.
+**If you are the agent reading this:** the folder you were opened in is the working folder. `git clone` this
+repository into it; `mkdir -p ~/.claude/skills && cp -r Accelerator-HPC-Toolkit/skills/mn5-first-job ~/.claude/skills/`
+(so the skill is there for later sessions); then open `Accelerator-HPC-Toolkit/skills/mn5-first-job/SKILL.md`
+and follow it from Step 0, running the scripts from the clone by absolute path, with the working folder as
+your current directory (`cluster.env`, `build/`, `pulled/` land there). Steps 0 and 1 need no answers from
+the human; ask the skill's opening questions before Step 2. Do not improvise around the skill; it encodes
+rules that each cost someone a day.
 
 ## 1. Before you start (15 minutes, once)
 

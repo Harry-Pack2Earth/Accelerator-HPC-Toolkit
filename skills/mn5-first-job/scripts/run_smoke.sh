@@ -14,7 +14,7 @@ if [[ $DRY -eq 1 ]]; then
   cat "$BUILD/smoke.sbatch"; exit 0
 fi
 echo "== the job about to be submitted (4 cores, 5 min wall, debug queue) =="; grep -E "^#SBATCH" "$BUILD/smoke.sbatch"
-"$HERE/estimate_cost.sh" --cpus 4 --hours 0.084 | tail -2
+"$HERE/estimate_cost.sh" --cpus 4 --hours 0.084 | tail -3
 "$HERE/sync_push.sh" smoke "$BUILD/smoke.sbatch" "$BUILD/smoke_job.py"
 "$HERE/submit.sh" smoke smoke.sbatch --go
 JOB_ID="$(cat .last_job_id)"

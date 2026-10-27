@@ -33,7 +33,10 @@ scripts/sync_pull.sh  ◀─rsync──  results from RESULTS_DIR (preflight dec
 A supercomputer is a queue, not a server. A job is a script that runs unattended when a slot frees
 up, minutes or a day later. Everything it needs must be on GPFS before you submit.
 
-## Ask the human these before you start (write the answers down)
+## Ask the human these before anything real (write the answers down)
+
+Steps 0 and 1 need none of these: preflight only reads, and the smoke costs under half a CPU-hour. Ask
+before Step 2, or as soon as the human is available.
 
 1. Is there a ceiling on what this session may spend from the allocation? (preflight prints used/total khours
    and the expiry date; 1 khour = 1,000 CPU-hours = 50 GPU-hours here.)
@@ -72,18 +75,22 @@ in the folder: module banners the login shell prints, not errors.
 scripts/run_smoke.sh
 ```
 
-Renders `templates/smoke.sbatch`, prints the `#SBATCH` lines and the cost (4 cores, 5 minutes, a fraction
-of a CPU-hour: that printed line is the cost check the guardrails ask for), pushes a standard-library-only
+Renders `templates/smoke.sbatch`, prints the `#SBATCH` lines and the cost (4 cores, 5 minutes, under half
+a CPU-hour: that printed line is the cost check the guardrails ask for, and the smoke is the one job that
+needs no yes from the human), pushes a standard-library-only
 Python job, submits it on the debug queue, waits, pulls the result back, and declares `SMOKE_VERIFIED` only
 when `smoke_result.json` is on the laptop. `run_smoke.sh --dry-run` shows the rendered job without
-submitting. It can block up to 30 minutes if the queue is busy: run it in the background with a log.
+submitting. It can block up to 30 minutes if the queue is busy: run it in the background with a log in the working
+folder (`scripts/run_smoke.sh > run_smoke.log 2>&1 &`) and read the log when it ends.
 If `submit.sh` refuses because your own earlier debug job is still queued (the debug queue holds one job per
 user), wait for it with `status.sh` and retry; never cancel it to make room.
 
 Show the human the JSON and say what it means: the hostname is a compute node; `python` is the node's own
 system Python (3.9), not the one your jobs will use (jobs use `PYTHON_MODULE` through a venv, or an image);
-`machine` must be `x86_64`; `cpus_allocated_to_this_job` is yours (4 cores, which reads as 8 because the node
-exposes two hardware threads per core), `cpu_count_node` is the whole shared node; `nvidia_smi` says "No devices found" because the smoke requested no GPU, which is expected even on a
+`machine` must be `x86_64`; `cpus_allocated_to_this_job` is yours (4; the `sbatch --test-only` line said "8
+processors" because it counts hardware threads, two per core), `cpu_count_node` is the whole shared node;
+`imports` says numpy, pandas, sklearn and torch are missing, which is expected on the node's system Python and
+is exactly why doors 2 and 3 exist; `nvidia_smi` says "No devices found" because the smoke requested no GPU, which is expected even on a
 GPU node. The verdict comes from the artifact, never from an exit code. If it is not verified, read the
 `.err` log before changing anything.
 
