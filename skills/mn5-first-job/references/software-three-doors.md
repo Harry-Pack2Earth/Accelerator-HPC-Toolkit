@@ -37,13 +37,15 @@ The cluster is x86_64. The image must be `linux/amd64`. That is the whole cross-
 | Laptop | Path | Verified by the team |
 |---|---|---|
 | Linux x86_64 with Apptainer | `scripts/build_sif.sh --mode native` (`--fakeroot`; or `sudo`) | in progress (Ubuntu 24.04 VM, Oct 2026): no `apptainer` apt package on 24.04; install the `.deb` from https://github.com/apptainer/apptainer/releases (1.5.5 worked) |
-| macOS, Apple Silicon | Docker Desktop or colima **with Rosetta enabled**, then `scripts/build_sif.sh --mode docker` (apptainer inside a privileged amd64 container) | **yes**, every production image, July to October 2026 |
-| macOS, Intel | same docker mode, no emulation | no (same code path, native amd64) |
-| Windows x86_64 | Ubuntu under WSL2, install Apptainer there, native mode; or Docker Desktop with the WSL2 backend, docker mode | no |
+| macOS, Apple Silicon | colima (`--vm-type vz --cpu 4 --memory 8`, qemu binfmt or Rosetta), then `scripts/build_sif.sh --mode docker` (apptainer inside a privileged amd64 container) | **yes on macOS 26** (every production image, July to September 2026). **FAILS on macOS 27.0.1** (checked 27 Oct 2026: same profile, same builder digest, even a 3-line alpine def dies at "Failed to spawn stage 1" when `%post` starts). Until understood: build on a Linux VM or WSL2 and copy the `.sif` back |
+| macOS, Intel | same docker mode, no emulation | no (same code path, native amd64; the macOS 27 failure may or may not apply) |
+| Windows x86_64 | Ubuntu under WSL2, Apptainer `.deb` there, native mode | **yes** (Server 2022 + WSL2 Ubuntu 24.04, Oct 2026): preflight and smoke identical to Linux; `--fakeroot` fails in WSL2 (binfmt_misc already mounted by Windows interop), `sudo apptainer build` works, the script falls back to it |
 | Windows on ARM | docker mode under emulation, or a cloud x86_64 VM | no |
 | Any | a cheap x86_64 Linux cloud VM with Apptainer: build there, `rsync` from there to the transfer node | no |
 
 Apple-Silicon specifics the team hit:
+- The colima profile that built every production image had `rosetta: false` (qemu binfmt); the script's own comments
+  claimed Rosetta. Check `~/.colima/<profile>/colima.yaml`, not comments.
 - Rosetta off → `exec format error` at build start. colima: `colima start --vm-type vz --vz-rosetta`. Docker Desktop:
   Settings → General → "Use Rosetta for x86_64/amd64 emulation on Apple Silicon".
 - Import checks in `%post` crash under emulation (SIGILL in x86 numeric libraries). The template makes them non-fatal.
@@ -54,6 +56,6 @@ Apple-Silicon specifics the team hit:
 - Some CUDA extensions (ones compiled at install time) cannot be built on a Mac at all; use a base image that ships
   them, or build on a Linux GPU machine.
 
-Windows notes (from general practice, not yet exercised by the team): do everything in the WSL2 Ubuntu terminal,
+Windows notes (exercised on a Windows Server 2022 machine with WSL2, Oct 2026): do everything in the WSL2 Ubuntu terminal,
 including `ssh` and `rsync`; stock Windows has no rsync. Keep the working folder on the Linux side of WSL2
 (`~/...`), not under `/mnt/c`, for speed and file permissions.

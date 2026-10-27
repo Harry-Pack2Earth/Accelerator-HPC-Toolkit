@@ -38,7 +38,17 @@ if [[ "$MODE" == "native" ]]; then
   BIN="$(command -v apptainer || command -v singularity)"
   [[ "$(uname -m)" == "x86_64" ]] || { echo "ERROR: native build on $(uname -m) would produce a non-x86_64 image. Use --mode docker (emulated) or an x86_64 Linux machine." >&2; exit 2; }
   echo "== native build with $BIN (--fakeroot) =="
-  "$BIN" build --fakeroot "${FLAGS[@]}" "$OUT" "$DEF" || { echo "If that was a permissions error: 'sudo $BIN build ...' or ask the admin to enable fakeroot for your user." >&2; exit 1; }
+  if ! "$BIN" build --fakeroot "${FLAGS[@]}" "$OUT" "$DEF" 2> >(tee /tmp/build_sif.err >&2); then
+    # Two known failures of --fakeroot: no subuid mapping for the user, and WSL2, where apptainer tries to mount
+    # binfmt_misc that Windows interop already mounted ("failed to mount binfmt_misc filesystem: invalid argument").
+    # Both are fixed by building as real root, which every Linux/WSL user with sudo can do. Verified Oct 2026.
+    if command -v sudo >/dev/null 2>&1; then
+      echo "fakeroot build failed ($(grep -m1 -oE 'FATAL.*' /tmp/build_sif.err || echo see above)); retrying with sudo" >&2
+      sudo "$BIN" build "${FLAGS[@]}" "$OUT" "$DEF" && sudo chown "$(id -u):$(id -g)" "$OUT"
+    else
+      echo "fakeroot build failed and no sudo: ask the admin to add you to /etc/subuid, or build on another machine" >&2; exit 1
+    fi
+  fi
 else
   docker info >/dev/null 2>&1 || { echo "Docker daemon not running. Start Docker Desktop (or: colima start --vm-type vz --vz-rosetta --cpu 4 --memory 8 --disk 100)" >&2; exit 2; }
   DOCKER_ARCH="$(docker info --format '{{.Architecture}}')"
@@ -48,7 +58,12 @@ else
   case "$WORK" in "$HOME"/*) ;; *) echo "NOTE: on macOS the Docker VM shares only \$HOME; a workdir outside it mounts EMPTY and the build fails at def open. Move under \$HOME." >&2 ;; esac
   echo "== apptainer-in-docker ($APPTAINER_IMAGE), platform linux/amd64, workdir $WORK =="
   echo "If the pull fails with an auth error on nvcr.io: 'docker login nvcr.io' with an NGC API key, then re-run."
-  docker run --rm --privileged --platform linux/amd64 -v "$WORK:/work" -w /work "$APPTAINER_IMAGE" \
+  # STATUS (27 Oct 2026): this exact recipe built every production image of the authors from July to September 2026
+  # (colima, --vz or qemu binfmt, kaczmarj/apptainer 1.4.4). On the same machine after a macOS upgrade it fails at
+  # "Failed to spawn stage 1" when %post starts, even for a 3-line alpine def. Until that is understood, macOS users
+  # build on a Linux VM or WSL2 (both verified the same day) and copy the .sif back. See references/software-three-doors.md.
+  CACHE="${APPTAINER_CACHE_DIR:-$HOME/.apptainer-cache}"; mkdir -p "$CACHE"   # keeps the 10-20 GB base between builds
+  docker run --rm --privileged --platform linux/amd64 -v "$WORK:/work" -v "$CACHE:/root/.apptainer" -w /work "$APPTAINER_IMAGE" \
     build "${FLAGS[@]}" "/work/${OUT_ABS#"$WORK"/}" "/work/${DEF_ABS#"$WORK"/}"
 fi
 echo; ls -lh "$OUT"

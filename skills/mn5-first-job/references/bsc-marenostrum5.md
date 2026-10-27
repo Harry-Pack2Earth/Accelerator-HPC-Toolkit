@@ -35,7 +35,8 @@ Commands: `bsc_project list`, `bsc_queues`, `bsc_quota`, `bsc_acct`, plus standa
 
 - ACC node: 4 x NVIDIA H100 with **64 GB** each (measured; not the 80 GB of other H100 systems), 80 CPU cores.
   Billing: 20 cores per GPU, so 5,000 GPU-h = 100,000 CPU-h. **measured**
-- Driver seen on ACC nodes in September 2026: 595.71.05, so CUDA 12.x and 13.0 runtimes run under `--nv`. **measured**
+- Driver seen on ACC nodes: 595.71.05 (September 2026), 595.91.07 / CUDA 13.2 (27 October 2026), so CUDA 12.x and 13.x
+  runtimes run under `--nv`. **measured**
 - Compute and login nodes: no outbound internet, no fakeroot, no sudo. **measured**
 - Architecture x86_64 (`uname -m`). Images and wheels must be built for `linux/amd64`. **measured**
 - Container runtime: `module load singularity/4.1.5` (version at the time; `module avail singularity`). **measured**

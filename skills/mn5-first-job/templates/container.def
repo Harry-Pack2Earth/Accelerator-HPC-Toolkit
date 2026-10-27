@@ -14,8 +14,11 @@ From: nvcr.io/nvidia/pytorch:25.01-py3
 
 %post
     set -e
-    BASE_NUMPY="$(python -c 'import numpy; print(numpy.__version__)')"
-    echo "numpy==${BASE_NUMPY}" > /tmp/constraints.txt          # keep the base's numpy; it is matched to torch
+    # Read the base's numpy version WITHOUT importing it: under amd64 emulation on an ARM laptop an x86 numeric
+    # library can crash at import (SIGILL) and a crash here kills the whole build. pip show never imports.
+    BASE_NUMPY="$(python -m pip show numpy 2>/dev/null | awk '/^Version:/{print $2}')"
+    echo "base numpy: ${BASE_NUMPY:-not found}"
+    if [ -n "${BASE_NUMPY}" ]; then echo "numpy==${BASE_NUMPY}" > /tmp/constraints.txt; else : > /tmp/constraints.txt; fi
     python -m pip install --no-cache-dir -c /tmp/constraints.txt -r /opt/app/requirements.txt
     chmod -R a+rX /opt/app        # the cluster runs the container as YOUR uid, not root; files must be readable
     # Import check. Non-fatal on purpose: building linux/amd64 on an ARM laptop runs this under emulation,

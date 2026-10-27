@@ -130,6 +130,17 @@ Items marked *documented, not seen* are site guidance the team followed without 
 40. **Rule:** Images run on compute nodes only.
     **Seen:** `singularity exec` on the login node failed for want of `/scratch/tmp`.
 
+40b. **Rule:** In WSL2, `apptainer build --fakeroot` fails ("failed to mount binfmt_misc filesystem: invalid argument")
+    because Windows interop already mounts binfmt_misc. Build with `sudo`.
+    **Seen (27 Oct 2026):** Windows Server 2022, WSL2 Ubuntu 24.04, apptainer 1.5.5, normal user with subuid.
+
+40c. **Rule:** A host OS upgrade can break an image-build recipe that has not changed. Date the last good build
+    against the upgrade before touching the recipe.
+    **Seen (27 Oct 2026):** apptainer-in-docker on macOS: same colima profile, same builder image digest, same def; last
+    good build 22 Sep on macOS 26.6.2; macOS 27.0.1 installed 3 Oct; now even a 3-line alpine `%post` fails at
+    "Failed to spawn stage 1". The team's own script comments also claimed the recipe used Rosetta; the profile that
+    worked had Rosetta off. Official-looking text, including your own, is not evidence.
+
 ## Submit
 
 41. **Rule:** Pass `--cpus-per-task` on every `srun` and export `SRUN_CPUS_PER_TASK`.
