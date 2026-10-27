@@ -1,13 +1,19 @@
 #!/usr/bin/env bash
-# build_sif.sh — build a linux/amd64 Apptainer image from a .def file, on whatever machine this is.
-# Usage: scripts/build_sif.sh --def <file.def> --out <image.sif> [--force] [--mode native|docker]
+# build_sif.sh — build a linux/amd64 Apptainer image, on whatever machine this is.
+# Usage: scripts/build_sif.sh --def <file.def> --out <image.sif> [--force] [--mode native|docker|docker-def]
 #
 # The cluster is x86_64 (linux/amd64). The image must be too, whatever your laptop is.
-#   Linux x86_64 / WSL2 with apptainer installed  -> native build (--fakeroot)
-#   macOS, or any machine with Docker but no apptainer -> apptainer inside a privileged Docker container,
-#        forced to --platform linux/amd64. On Apple Silicon that is emulation: enable Rosetta
-#        (Docker Desktop: Settings > General > "Use Rosetta for x86_64/amd64 emulation"; colima: --vz-rosetta).
-#        A build that dies with "exec format error" means the emulation is not on.
+#   native      Linux x86_64 / WSL2 with apptainer installed: build from the .def (--fakeroot, then sudo). Verified.
+#   docker      macOS, or any machine with Docker but no apptainer: Docker builds the image from the Dockerfile next
+#               to the .def (same content), forced to linux/amd64, then apptainer (in a container) converts it to .sif
+#               straight from the Docker daemon. Nothing runs inside apptainer, so no privileged nesting and no
+#               %post under emulation. Verified on macOS 27 (Oct 2026).
+#   docker-def  the older recipe: apptainer itself inside a privileged amd64 container, building from the .def. It
+#               built every image of the authors on macOS 26 (July to Sept 2026) and stopped working on the same
+#               machine on macOS 27 / current colima ("Failed to spawn stage 1", even for a native arm64 def). Kept
+#               for machines where it still works.
+# On Apple Silicon enable amd64 emulation (Docker Desktop: Settings > General > Rosetta; colima: --vz-rosetta or qemu
+# binfmt, both fine for docker mode). "exec format error" means it is off.
 # Expect the first build to pull a 10-20 GB base image. Build in a terminal that will stay awake.
 set -euo pipefail
 DEF=""; OUT=""; FORCE=0; MODE="auto"
@@ -34,6 +40,15 @@ if [[ "$MODE" == "auto" ]]; then
     echo "  Windows:    run this inside an Ubuntu (WSL2) terminal" >&2; exit 2
   fi
 fi
+docker_prep() {
+  docker info >/dev/null 2>&1 || { echo "Docker daemon not running. Start Docker Desktop (or: colima start --vm-type vz --cpu 4 --memory 8 --disk 100)" >&2; exit 2; }
+  DOCKER_ARCH="$(docker info --format '{{.Architecture}}')"
+  [[ "$DOCKER_ARCH" == "x86_64" || "$DOCKER_ARCH" == "amd64" ]] || echo "Docker host is $DOCKER_ARCH: building linux/amd64 under emulation (slow; needs Rosetta/qemu enabled)."
+  DEF_DIR="$(cd "$(dirname "$DEF")" && pwd)"; DEF_ABS="${DEF_DIR}/$(basename "$DEF")"; OUT_ABS="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
+  WORK="$(pwd)"   # %files / COPY paths are relative to this directory
+  case "$WORK" in "$HOME"/*) ;; *) echo "NOTE: on macOS the Docker VM shares only \$HOME; a workdir outside it mounts EMPTY and the build fails at def open. Move under \$HOME." >&2 ;; esac
+  CACHE="${APPTAINER_CACHE_DIR:-$HOME/.apptainer-cache}"; mkdir -p "$CACHE"   # keeps pulled layers between builds
+}
 if [[ "$MODE" == "native" ]]; then
   BIN="$(command -v apptainer || command -v singularity)"
   [[ "$(uname -m)" == "x86_64" ]] || { echo "ERROR: native build on $(uname -m) would produce a non-x86_64 image. Use --mode docker (emulated) or an x86_64 Linux machine." >&2; exit 2; }
@@ -49,25 +64,26 @@ if [[ "$MODE" == "native" ]]; then
       echo "fakeroot build failed and no sudo: ask the admin to add you to /etc/subuid, or build on another machine" >&2; exit 1
     fi
   fi
-else
-  docker info >/dev/null 2>&1 || { echo "Docker daemon not running. Start Docker Desktop (or: colima start --vm-type vz --vz-rosetta --cpu 4 --memory 8 --disk 100)" >&2; exit 2; }
-  DOCKER_ARCH="$(docker info --format '{{.Architecture}}')"
-  [[ "$DOCKER_ARCH" == "x86_64" || "$DOCKER_ARCH" == "amd64" ]] || echo "Docker host is $DOCKER_ARCH: building linux/amd64 under emulation (slow; needs Rosetta/qemu enabled)."
-  DEF_ABS="$(cd "$(dirname "$DEF")" && pwd)/$(basename "$DEF")"; OUT_ABS="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
-  WORK="$(pwd)"   # %files paths in the .def are relative to this directory
-  case "$WORK" in "$HOME"/*) ;; *) echo "NOTE: on macOS the Docker VM shares only \$HOME; a workdir outside it mounts EMPTY and the build fails at def open. Move under \$HOME." >&2 ;; esac
-  echo "== apptainer-in-docker ($APPTAINER_IMAGE), platform linux/amd64, workdir $WORK =="
+elif [[ "$MODE" == "docker" ]]; then
+  docker_prep
+  DOCKERFILE="${DEF_DIR}/Dockerfile"
+  [[ -f "$DOCKERFILE" ]] || { echo "docker mode needs a Dockerfile next to $DEF (copy templates/Dockerfile; keep it in step with the .def)" >&2; exit 2; }
+  TAG="hpc-first-job/$(basename "${OUT%.sif}"):build"
+  echo "== 1/2 docker build (linux/amd64) -> $TAG =="
   echo "If the pull fails with an auth error on nvcr.io: 'docker login nvcr.io' with an NGC API key, then re-run."
-  # STATUS (27 Oct 2026): this exact recipe built every production image of the authors from July to September 2026
-  # (colima, --vz or qemu binfmt, kaczmarj/apptainer 1.4.4). On the same machine after a macOS upgrade it fails at
-  # "Failed to spawn stage 1" when %post starts, even for a 3-line alpine def. Until that is understood, macOS users
-  # build on a Linux VM or WSL2 (both verified the same day) and copy the .sif back. See references/software-three-doors.md.
-  CACHE="${APPTAINER_CACHE_DIR:-$HOME/.apptainer-cache}"; mkdir -p "$CACHE"   # keeps the 10-20 GB base between builds
+  docker build --platform linux/amd64 -t "$TAG" -f "$DOCKERFILE" "$WORK"
+  echo "== 2/2 convert $TAG -> $OUT (apptainer in a container reads the Docker daemon; nothing runs) =="
+  docker run --rm --platform linux/amd64 -v /var/run/docker.sock:/var/run/docker.sock \
+    -v "$WORK:/work" -v "$CACHE:/root/.apptainer" -w /work "$APPTAINER_IMAGE" \
+    build "${FLAGS[@]}" "/work/${OUT_ABS#"$WORK"/}" "docker-daemon://${TAG}"
+else
+  docker_prep
+  echo "== docker-def: apptainer-in-docker ($APPTAINER_IMAGE), platform linux/amd64, workdir $WORK =="
   docker run --rm --privileged --platform linux/amd64 -v "$WORK:/work" -v "$CACHE:/root/.apptainer" -w /work "$APPTAINER_IMAGE" \
     build "${FLAGS[@]}" "/work/${OUT_ABS#"$WORK"/}" "/work/${DEF_ABS#"$WORK"/}"
 fi
 echo; ls -lh "$OUT"
 # A build killed mid-write leaves a .sif that LOOKS complete. Check the header before trusting it.
-if [[ "$MODE" == "native" ]]; then "$BIN" sif list "$OUT" | head -5 || { echo "ERROR: image header unreadable; rebuild with --force" >&2; exit 1; }
-else docker run --rm --platform linux/amd64 -v "$WORK:/work" "$APPTAINER_IMAGE" sif list "/work/${OUT_ABS#"$WORK"/}" | head -5 || { echo "ERROR: image header unreadable; rebuild with --force" >&2; exit 1; }; fi
+if [[ "$MODE" == "native" ]]; then "$BIN" sif list "$OUT" | tail -3 || { echo "ERROR: image header unreadable; rebuild with --force" >&2; exit 1; }
+else docker run --rm --platform linux/amd64 -v "$WORK:/work" "$APPTAINER_IMAGE" sif list "/work/${OUT_ABS#"$WORK"/}" | tail -3 || { echo "ERROR: image header unreadable; rebuild with --force" >&2; exit 1; }; fi
 echo "Next: scripts/sync_push.sh images $OUT    (then verify with a debug-queue job: a stale or broken image fails in seconds)"

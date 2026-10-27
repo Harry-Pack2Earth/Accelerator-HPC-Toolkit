@@ -21,7 +21,9 @@ on_transfer mkdir -p "${DEST_ABS}"
 keep_awake rsync "${FLAGS[@]}" "${PATHS[@]}" "${REMOTE}"
 if [[ $VERIFY -eq 1 && $DRY -eq 0 ]]; then
   MANIFEST="$(mktemp)"
-  for p in "${PATHS[@]}"; do find "$p" -type f -exec shasum -a 256 {} + ; done > "$MANIFEST"
+  # manifest paths are relative to the DESTINATION: a pushed file lands as its basename, a pushed directory as
+  # <dirname>/<contents>. A laptop-relative path like project/test.sif would never be found by the remote check.
+  for p in "${PATHS[@]}"; do (cd "$(dirname "$p")" && find "$(basename "$p")" -type f -exec shasum -a 256 {} +); done > "$MANIFEST"
   rsync -q "$MANIFEST" "${CLUSTER_USER}@${TRANSFER_HOST}:${DEST_ABS}/.push_manifest.sha256"
   on_transfer "cd '${DEST_ABS}' && sha256sum -c --quiet .push_manifest.sha256 && echo VERIFY_OK"
 fi

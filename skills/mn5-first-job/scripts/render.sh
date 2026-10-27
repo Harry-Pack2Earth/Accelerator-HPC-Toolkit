@@ -17,7 +17,9 @@ for line in open(env_file):
 for p in pairs:
     k, v = p.split("=", 1); values[k] = v
 if "CONTAINER_MODULE" not in values and values.get("CONTAINER_MODULES"):
-    values["CONTAINER_MODULE"] = values["CONTAINER_MODULES"].split()[0]
+    # newest version listed (module avail prints 3.11.5 before 4.1.5)
+    def vkey(m): return [int(x) if x.isdigit() else x for x in m.split("/")[-1].split(".")]
+    values["CONTAINER_MODULE"] = sorted(values["CONTAINER_MODULES"].split(), key=vkey)[-1]
 text = open(template).read()
 text = re.sub(r"__([A-Z0-9_]+)__", lambda m: values.get(m.group(1), m.group(0)), text)
 left = sorted(set(re.findall(r"__([A-Z0-9_]+)__", text)))

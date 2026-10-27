@@ -37,6 +37,8 @@ Read the `.err` log first (`scripts/status.sh <job id>` lists it). Then find the
 | job ran a default you did not ask for | empty command substitution fell through | scripts must refuse to run without explicit input |
 | 20 tasks died with no log mid-array | files they read were replaced while pending | never touch inputs of queued jobs |
 | dependent job `DependencyNeverSatisfied` | one task of the array failed or timed out | resubmit the failed task; re-chain by hand |
+| batch step `ExitCode 13:0`, no srun step, empty error log | a `cmd \| head` pipe under `set -o pipefail` (SIGPIPE) | no pipes into head/grep; query the tool directly |
+| `Failed to spawn stage 1` building in Docker on a Mac | apptainer's starter cannot spawn inside Docker on macOS 27 / current colima | `--mode docker`: Docker builds, apptainer converts from the daemon |
 | `TIMEOUT` | wall too short | count progress; resubmit the SAME job with a wall sized from it; checkpoint next time |
 | timed out with no progress in the log | buffered stdout | `PYTHONUNBUFFERED=1`; log per step |
 | OOM on a 64 GB GPU with a model that "fits in 80 GB" | these H100s have 64 GB | quantise the base; smaller batch; measured token ceiling |

@@ -14,10 +14,12 @@ machine and the artifact checked, not when it "should work".
 | `preflight.sh` against a real account | macOS 27 | verified | 2026-10-27 | found project, acc partition, QoS limits 3-00:00:00 / cap 366, 0.5 GB projects quota → big files on scratch, switched to alogin1; fixed on the way: accept-new host keys, try next login node, strip ANSI, stdout-only capture |
 | `run_smoke.sh` end to end on MN5 (debug queue) | macOS 27 | verified | 2026-10-27 | job 48129465 COMPLETED in 6 s on as01r1b31; artifact pulled: x86_64, system Python 3.9.21, no numpy, no GPU; fixed on the way: pull tolerates rsync exit 23, `-rlt` not `-a`, banner filter |
 | `build_wheels.sh` + `install_wheels_remote.sh` + 1-task `cpu_array` | macOS → MN5 | pending | | |
-| `build_sif.sh --mode docker` (Rosetta) + `image_smoke.sbatch` | macOS Apple Silicon → MN5 | pending (method used in production by the authors, scripts not yet re-run) | | |
+| `build_sif.sh --mode docker-def` (apptainer in a privileged container, the July-Sept recipe) | macOS 27.0.1, colima | FAILS | 2026-10-27 | "Failed to spawn stage 1" at %post, same colima profile and builder digest as the September builds; also fails for a native arm64 def |
+| `build_sif.sh --mode docker` (Docker builds, apptainer converts from the daemon) + push `--verify` + `image_smoke.sbatch` | macOS 27.0.1, colima | running | 2026-10-27 | tiny image verified (Squashfs amd64); real image built, push + H100 smoke in progress |
 | `preflight.sh` + `run_smoke.sh` | Ubuntu 24.04 x86_64 (EC2 t3.large), agent-forwarded key | verified | 2026-10-27 | job 48129580 COMPLETED, SMOKE_VERIFIED |
-| `build_sif.sh --mode native` + push `--verify` + `image_smoke.sbatch` | Ubuntu 24.04 x86_64 VM | running | 2026-10-27 | apptainer 1.5.5 from the GitHub .deb (no apt package on 24.04) |
-| whole procedure in WSL2 | Windows x86_64 cloud VM | pending | | |
+| `build_sif.sh --mode native` + push `--verify` + `image_smoke.sbatch` | Ubuntu 24.04 x86_64 VM (t3.large) | verified | 2026-10-27 | apptainer 1.5.5 (.deb; no apt package on 24.04); 13.1 GB image; push 6 min 20 s, VERIFY_OK; job 48132883 `IMAGE_OK x86_64 torch 2.6.0 cu12.8 NVIDIA H100 65247 MiB`; fixed on the way: verify manifest paths, stale job id, SIGPIPE in the template, newest module version |
+| `preflight.sh` + `run_smoke.sh` in WSL2 | Windows Server 2022 (m5zn.metal) + WSL2 Ubuntu 24.04, normal user | verified | 2026-10-27 | job 48130637 SMOKE_VERIFIED; preflight switched itself to alogin1 |
+| `build_sif.sh --mode native` in WSL2 + push + image smoke | same | running | 2026-10-27 | `--fakeroot` fails (binfmt_misc already mounted by WSL interop), sudo fallback built the 13 GB image in 9 min 17 s; push + H100 smoke in progress |
 | cold run by a person who has never used MN5, with an agent | fresh user account | pending | | |
 
 Unverified site facts are listed at the end of `skills/mn5-first-job/references/lessons.md`.

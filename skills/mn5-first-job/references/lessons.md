@@ -97,6 +97,12 @@ Items marked *documented, not seen* are site guidance the team followed without 
     **Seen:** `torch.compile` failed with "libcuda.so cannot found!" (driver under `/usr/local/cuda/compat/lib`).
     **Fix:** compile off by default.
 
+28b. **Rule:** On macOS, let Docker build the image and let apptainer only convert it from the Docker daemon
+    (`docker-daemon://`). No `%post` runs inside apptainer, so no privileged nesting and no shell under emulation.
+    **Seen (27 Oct 2026):** the nested builder (apptainer inside a privileged container, the recipe that built every
+    image on macOS 26) fails on macOS 27 / current colima at "Failed to spawn stage 1", for amd64, for `--arch amd64`
+    on a native builder, and even for a native arm64 alpine def. The conversion route built the same 13 GB image.
+
 ## Containers
 
 29. **Rule:** Build for the cluster's architecture, x86_64, whatever the laptop is.
@@ -160,6 +166,14 @@ Items marked *documented, not seen* are site guidance the team followed without 
 47. **Rule:** `afterok` on an array needs every task to succeed; one TIMEOUT leaves the dependent job pending forever.
     **Seen:** two tuning workers hit the wall; the chained finals died "DependencyNeverSatisfied".
     **Fix:** resubmit, resume, re-chain by hand.
+
+47b. **Rule:** Never pipe into `head`/`grep` in a batch script that runs under `set -o pipefail`. The reader closes the
+    pipe, the writer dies with SIGPIPE, and `set -e` ends the job: exit code 13, no error text, no `srun` step.
+    **Seen (27 Oct 2026):** `nvidia-smi | head -4` killed the image smoke in 17 s; `sacct` showed `ExitCode 13:0`.
+    Ask the tool for what you want (`nvidia-smi --query-gpu=... --format=csv`) instead.
+47c. **Rule:** When a site offers several versions of a module, pick the newest explicitly. `module avail` lists
+    3.11.5 before 4.1.5.
+    **Seen (27 Oct 2026):** the first rendered job loaded `singularity/3.11.5`; the version every production job used was 4.1.5.
 
 ## Queue and QoS
 

@@ -16,6 +16,8 @@ set -euo pipefail
 export SRUN_CPUS_PER_TASK="${SLURM_CPUS_PER_TASK}"
 module load __CONTAINER_MODULE__
 echo "node=$(hostname) image=__SIF__ sha=$(sha256sum "__SIF__" | cut -c1-16)"
-nvidia-smi | head -4
+# No pipes into head/grep here: under `set -o pipefail` a closed pipe kills nvidia-smi with SIGPIPE and the job
+# exits 13 before srun runs. Ask for exactly what you want instead.
+nvidia-smi --query-gpu=name,driver_version,memory.total --format=csv
 srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" singularity exec --nv "__SIF__" \
   python -c "import platform, torch; assert torch.cuda.is_available(), 'CUDA not available in the container'; print('IMAGE_OK', platform.machine(), torch.__version__, torch.version.cuda, torch.cuda.get_device_name(0))"
