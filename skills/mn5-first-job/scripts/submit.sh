@@ -13,7 +13,6 @@ rm -f .last_job_id            # never let a failed submit leave an older job id 
 on_login mkdir -p "${SCRATCH_DIR}/logs" "${SCRATCH_DIR}/runs"
 echo "== test-only =="
 on_login "cd '${DIR_ABS}' && sbatch --test-only '${FILE}'" || { echo "sbatch rejected the file; fix it before --go" >&2; exit 3; }
-QUEUED="$(on_login "squeue -r -h -u '${CLUSTER_USER}' | wc -l" | tr -d ' ')"
 # exact task count for any SLURM array spec: 0-9, 0-9%4, 0,5,9, 1-10:2, or none (= 1 job)
 TASKS="$(on_login "cat '${DIR_ABS}/${FILE}'" | python3 -c '
 import re, sys
@@ -26,10 +25,12 @@ for part in m.group(1).split(","):
     if "-" in part: a, b = map(int, part.split("-")); n += len(range(a, b + 1, step))
     else: n += 1
 print(n)')"
-# the cap belongs to the QoS named IN THE FILE: the debug QoS has a much smaller one than production
+# the cap belongs to the QoS named IN THE FILE and counts only jobs in THAT QoS (MaxSubmitPU is per QoS per user):
+# a pending production array must not block a debug smoke
 FILE_QOS="$(on_login "cat '${DIR_ABS}/${FILE}'" | grep -oE '^#SBATCH --qos=[A-Za-z0-9_]+' | head -1 | cut -d= -f2 || true)"
 CAP="${QOS_MAX_SUBMIT:-}"; [[ "$FILE_QOS" == "${QOS_DEBUG:-}" ]] && CAP="${QOS_DEBUG_MAX_SUBMIT:-}"
-echo "queued now (array tasks counted individually): ${QUEUED}; this submission adds ${TASKS}; per-user cap on ${FILE_QOS:-?}: ${CAP:-unknown}"
+QUEUED="$(on_login "squeue -r -h -u '${CLUSTER_USER}' ${FILE_QOS:+-q '${FILE_QOS}'} | wc -l" | tr -d ' ')"
+echo "queued now in ${FILE_QOS:-?} (array tasks counted individually): ${QUEUED}; this submission adds ${TASKS}; per-user cap: ${CAP:-unknown}"
 if [[ -n "${CAP}" && "${CAP}" =~ ^[0-9]+$ && $((QUEUED + TASKS)) -gt "${CAP}" ]]; then
   echo "ERROR: ${QUEUED}+${TASKS} exceeds the cap ${CAP} of ${FILE_QOS}. The whole submission is rejected, not trimmed. Fewer tasks, another QoS, or wait for the queue to drain." >&2; exit 3
 fi
