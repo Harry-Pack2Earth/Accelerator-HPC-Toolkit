@@ -53,6 +53,8 @@ Apple-Silicon specifics the team hit:
 - Import checks in `%post` crash under emulation (SIGILL in x86 numeric libraries). The template makes them non-fatal.
   The cluster smoke is the proof.
 - The Docker VM shares only `$HOME`. Build from a folder under `$HOME`.
+- Give the Docker VM 4+ CPUs and 8 GB for the conversion (Docker Desktop: Settings > Resources; colima:
+  `colima start --cpu 4 --memory 8`): on a 2-CPU, 2 GB VM a 13 GB image took about 2.5 hours to convert.
 - The conversion unpacks the whole rootfs (about twice the image size) in a temp dir. The script binds
   `~/.apptainer-cache/tmp` for it; inside the builder container it would land on the VM's small root disk
   ("no space left on device" at 13 GB on colima's 19 GB root).
