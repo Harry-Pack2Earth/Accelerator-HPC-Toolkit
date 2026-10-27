@@ -17,6 +17,16 @@ while [[ $# -gt 0 ]]; do case "$1" in
   *) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;; esac; done
 [[ -n "$REQ" && -f "$REQ" ]] || { grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 ABI="cp${PY//./}"
+# pip on the LAPTOP is needed to download wheels. Stock Ubuntu/Debian ship python3 without it.
+if ! python3 -m pip --version >/dev/null 2>&1; then
+  cat >&2 <<'MSG'
+python3 has no pip on this machine. Install it, then re-run:
+  Ubuntu / Debian / WSL2:  sudo apt-get install -y python3-pip
+  macOS:                   python3 -m ensurepip --user   (or: brew install python)
+  any:                     python3 -m ensurepip --user
+MSG
+  exit 2
+fi
 # Never wipe a directory we did not make: only an absent dir, or one holding a previous bundle (.bundle marker), is removed.
 if [[ -e "$OUT" && ! -f "$OUT/.bundle" ]]; then echo "ERROR: $OUT exists and is not a wheel bundle made by this script; choose another --out" >&2; exit 2; fi
 rm -rf "$OUT"; mkdir -p "$OUT"; : > "$OUT/.bundle"

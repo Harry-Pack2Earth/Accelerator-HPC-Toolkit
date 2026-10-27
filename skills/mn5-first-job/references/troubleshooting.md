@@ -28,6 +28,7 @@ Read the `.err` log first (`scripts/status.sh <job id>` lists it). Then find the
 | `no such file` at def open in docker mode on a Mac | workdir outside `$HOME`, VM mounts it empty | build from under `$HOME` |
 | `FATAL: build target already exists` (last line) | tool refuses to overwrite | `--force` |
 | every GPU job dies at config load in ~10 s after a code change | stale image | rebuild, re-push, re-smoke |
+| `python3: No module named pip` on the laptop | stock Ubuntu/Debian/WSL2 Python has no pip | `sudo apt-get install -y python3-pip` (macOS: `python3 -m ensurepip --user`) |
 | `No matching distribution for <pkg>` during offline install | bundle built on ARM dropped an x86-only dependency | name the package explicitly in requirements; re-bundle |
 | `import sqlite3` fails under module Python | broken stdlib extension in the Intel build | `pysqlite3-binary` + `sitecustomize.py` swap |
 | two array tasks corrupt one venv | cross-node race; `flock` does not work on GPFS | install once from the login node; jobs test `.ready` |

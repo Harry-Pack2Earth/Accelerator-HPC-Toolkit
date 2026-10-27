@@ -67,6 +67,7 @@ if [[ "${MISSING:-0}" -eq 1 ]]; then
   echo "On Windows: open an Ubuntu (WSL2) terminal and run this from there; stock Windows has ssh but no rsync." >&2
   exit 2
 fi
+if python3 -m pip --version >/dev/null 2>&1; then echo "python3 + pip: $(python3 -m pip --version 2>/dev/null | cut -d" " -f1-2)"; else echo "NOTE: python3 has no pip here; door 2 (wheel bundles) needs it: sudo apt-get install -y python3-pip (Ubuntu/WSL2) or python3 -m ensurepip --user (macOS)"; fi
 RSYNC_BANNER="$(rsync --version 2>&1 | head -1)"
 echo "rsync: $RSYNC_BANNER"
 case "$RSYNC_BANNER" in
