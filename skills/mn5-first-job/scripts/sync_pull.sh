@@ -7,7 +7,7 @@ SRC="${1:-}"; DRY=0; [[ "${2:-}" == "--dry-run" || "${1:-}" == "--dry-run" ]] &&
 [[ -n "$SRC" && "$SRC" != "--dry-run" ]] || { grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 # a relative path is a job directory under RESULTS_DIR (projects, or scratch/results on a tiny quota)
 [[ "$SRC" = /* ]] || SRC="${RESULTS_DIR}/${SRC}"
-OUT="pulled/$(date -u +%Y%m%dT%H%M%SZ)"
+OUT="pulled/$(basename "$SRC")-$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$OUT"
 # -rlt not -a: no attempt to set owner/group/perms on the laptop side (fails in sandboxed folders and is pointless here)
 FLAGS=(-rltv --partial --human-readable); [[ $DRY -eq 1 ]] && FLAGS+=(--dry-run)

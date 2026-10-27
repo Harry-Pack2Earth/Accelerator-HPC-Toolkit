@@ -13,6 +13,8 @@ if [[ $DRY -eq 1 ]]; then
   echo "[dry-run] would push build/smoke.sbatch + smoke_job.py to ${PROJECTS_DIR}/smoke, submit on ${LOGIN_HOST} with qos ${QOS_DEBUG}, poll, pull ${RESULTS_DIR}/smoke-<id>"
   cat "$BUILD/smoke.sbatch"; exit 0
 fi
+echo "== the job about to be submitted (4 cores, 5 min wall, debug queue) =="; grep -E "^#SBATCH" "$BUILD/smoke.sbatch"
+"$HERE/estimate_cost.sh" --cpus 4 --hours 0.084 | tail -2
 "$HERE/sync_push.sh" smoke "$BUILD/smoke.sbatch" "$BUILD/smoke_job.py"
 "$HERE/submit.sh" smoke smoke.sbatch --go
 JOB_ID="$(cat .last_job_id)"
@@ -30,9 +32,9 @@ if [[ $DONE -eq 0 ]]; then
   echo "Job ${JOB_ID} is still ${STATE:-queued} after 30 min (queue busy). Not pulling yet. Check later with: scripts/status.sh ${JOB_ID}; then: scripts/sync_pull.sh ${RESULTS_DIR}/smoke-${JOB_ID}" >&2; exit 4
 fi
 "$HERE/sync_pull.sh" "${RESULTS_DIR}/smoke-${JOB_ID}"
-PULLED="$(ls -td pulled/* | head -1)"
+PULLED="$(ls -td pulled/smoke-"${JOB_ID}"-* | head -1)"
 if [[ -f "${PULLED}/smoke_result.json" ]] && grep -q '"machine"' "${PULLED}/smoke_result.json"; then
-  echo "SMOKE_VERIFIED: ${PULLED}/smoke_result.json"; python3 -c "import json;d=json.load(open('${PULLED}/smoke_result.json'));print({k:d[k] for k in ('hostname','python','machine','cpu_count_visible','nvidia_smi')})"
+  echo "SMOKE_VERIFIED: ${PULLED}/smoke_result.json"; python3 -c "import json;d=json.load(open('${PULLED}/smoke_result.json'));print({k:d.get(k) for k in ('hostname','python','machine','cpus_allocated_to_this_job','cpu_count_node','nvidia_smi')})"
 else
   echo "SMOKE_NOT_VERIFIED: no smoke_result.json came back. Read the log: scripts/status.sh ${JOB_ID}; then: ssh ${CLUSTER_USER}@${LOGIN_HOST} cat ${SCRATCH_DIR}/logs/smoke-${JOB_ID}.err" >&2
   exit 3

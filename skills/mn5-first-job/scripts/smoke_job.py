@@ -37,7 +37,9 @@ result = {
     "python": sys.version.split()[0],
     "python_executable": sys.executable,
     "machine": platform.machine(),
-    "cpu_count_visible": os.cpu_count(),
+    "cpu_count_node": os.cpu_count(),                                   # the whole node (shared with other jobs)
+    "cpus_allocated_to_this_job": (len(os.sched_getaffinity(0)) if hasattr(os, "sched_getaffinity") else None),
+    "slurm_cpus_per_task": os.environ.get("SLURM_CPUS_PER_TASK"),
     "cwd": os.getcwd(),
     "slurm": {k: v for k, v in os.environ.items() if k.startswith("SLURM_")},
     "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),

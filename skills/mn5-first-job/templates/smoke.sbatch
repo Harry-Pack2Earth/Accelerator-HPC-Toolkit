@@ -18,7 +18,7 @@ RUN_DIR="__SCRATCH_DIR__/runs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}"   # one directo
 mkdir -p "${RUN_DIR}"; cd "${RUN_DIR}"
 cp "__PROJECTS_DIR__/smoke/smoke_job.py" .
 echo "node=$(hostname) start=$(date -u +%FT%TZ) cpus=${SLURM_CPUS_PER_TASK}"
-nvidia-smi || echo "(no GPU on this node; fine for the smoke)"
+nvidia-smi || echo "(this job requested no GPU, so none is visible; expected for the smoke)"
 # Pass --cpus-per-task to srun explicitly: on this cluster srun does not inherit it from #SBATCH.
 srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" python3 smoke_job.py
 DEST="__RESULTS_DIR__/${SLURM_JOB_NAME}-${SLURM_JOB_ID}"; mkdir -p "$DEST"

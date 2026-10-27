@@ -8,7 +8,7 @@ Nothing installs on the cluster. No internet on the nodes, no root. Everything a
 | 2. Offline wheel bundle → venv on GPFS | CPU Python: pandas, scikit-learn, boosted trees | `scripts/build_wheels.sh` on the laptop → `scripts/install_wheels.sh <bundle>` (pushes, builds the venv once on the login node) | a 1-task `cpu_array` (LAST=0) on the debug queue (it allows one job per user); the first multi-task run goes to the production QoS |
 | 3. Apptainer image | anything with a GPU | `scripts/build_sif.sh` off-cluster → push `--verify` | `templates/image_smoke.sbatch` on a GPU node |
 
-Most founders start at door 2. Go to door 3 only when a GPU is needed. Verification status of each door: `TESTING.md`.
+Most founders start at door 2. Go to door 3 only when a GPU is needed. Verification status of each door: `TESTING.md` in the skill folder.
 
 ## Door 2 details
 

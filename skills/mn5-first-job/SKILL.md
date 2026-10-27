@@ -33,6 +33,16 @@ scripts/sync_pull.sh  ◀─rsync──  results from RESULTS_DIR (preflight dec
 A supercomputer is a queue, not a server. A job is a script that runs unattended when a slot frees
 up, minutes or a day later. Everything it needs must be on GPFS before you submit.
 
+## Ask the human these before you start (write the answers down)
+
+1. Is there a ceiling on what this session may spend from the allocation? (preflight prints used/total khours
+   and the expiry date; 1 khour = 1,000 CPU-hours = 50 GPU-hours here.)
+2. Other jobs under this username that are not yours (`status.sh` lists them): a teammate's? Leave them alone.
+3. If preflight reports a tiny projects quota: do they want a quota raise requested from BSC support (you can
+   draft the message; a human sends it), or is scratch acceptable for now?
+4. For a real job: the script, its inputs and their size, the packages it needs, and how long one run takes on
+   the laptop (that sets the wall time and the task count).
+
 ## Procedure
 
 All scripts run from one working folder on the laptop that holds `cluster.env`. Paths below are
@@ -53,7 +63,8 @@ images, wheels, venv and results go under scratch, and preflight says so: pull r
 human must create a key and upload it in the BSC accounts portal; the upload REPLACES the
 authorized_keys file, so every key still wanted goes in the same upload. If the allocation shows
 only `acc_*` queues it is GPU-only; preflight switches itself to an ACC login node and records it. If the account
-has several allocations it stops and asks which one (`--project`).
+has several allocations it stops and asks which one (`--project`). It also leaves `preflight.remote-banners.log`
+in the folder: module banners the login shell prints, not errors.
 
 ### Step 1. Smoke (prove the loop before any real software)
 
@@ -61,19 +72,33 @@ has several allocations it stops and asks which one (`--project`).
 scripts/run_smoke.sh
 ```
 
-Renders `templates/smoke.sbatch`, pushes a standard-library-only Python job, submits it on the
-debug queue, waits, pulls the result back, and declares `SMOKE_VERIFIED` only when
-`smoke_result.json` is on the laptop. The verdict comes from the artifact, never from an exit code.
-Show the human the JSON: hostname, Python version, `x86_64`, visible CPUs, `nvidia-smi` line.
-If it is not verified, read the `.err` log before changing anything.
+Renders `templates/smoke.sbatch`, prints the `#SBATCH` lines and the cost (4 cores, 5 minutes, a fraction
+of a CPU-hour: that printed line is the cost check the guardrails ask for), pushes a standard-library-only
+Python job, submits it on the debug queue, waits, pulls the result back, and declares `SMOKE_VERIFIED` only
+when `smoke_result.json` is on the laptop. `run_smoke.sh --dry-run` shows the rendered job without
+submitting. It can block up to 30 minutes if the queue is busy: run it in the background with a log.
+If `submit.sh` refuses because your own earlier debug job is still queued (the debug queue holds one job per
+user), wait for it with `status.sh` and retry; never cancel it to make room.
+
+Show the human the JSON and say what it means: the hostname is a compute node; `python` is the node's own
+system Python (3.9), not the one your jobs will use (jobs use `PYTHON_MODULE` through a venv, or an image);
+`machine` must be `x86_64`; `cpus_allocated_to_this_job` is yours (4), `cpu_count_node` is the whole shared
+node; `nvidia_smi` says "No devices found" because the smoke requested no GPU, which is expected even on a
+GPU node. The verdict comes from the artifact, never from an exit code. If it is not verified, read the
+`.err` log before changing anything.
 
 ### Step 2. Software: pick one of three doors (see references/software-three-doors.md)
 
 1. **Site modules** (`module avail`): fine for a quick stdlib or system-Python job.
 2. **Offline wheel bundle into a venv on GPFS**: CPU work in Python (scikit-learn, boosted trees,
    data processing). `scripts/build_wheels.sh` on the laptop, then `scripts/install_wheels.sh <bundle>`,
-   which pushes it and builds the venv once on the login node (rebuilds only when the bundle's content
-   hash changes). Jobs test `VENV_DIR/.ready`.
+   which pushes it and builds the venv once on the login node (one venv per bundle, pinned into the job at
+   render time). Then put the code where the job can reach it: `scripts/sync_push.sh <name> src manifest.txt`
+   lands at `PROJECTS_DIR/<name>/src/...` and `PROJECTS_DIR/<name>/manifest.txt`, so
+   `ENTRYPOINT=<PROJECTS_DIR>/<name>/src/your_script.py` and `MANIFEST=<PROJECTS_DIR>/<name>/manifest.txt`
+   (absolute paths, values from `cluster.env`). Input data larger than a few MB goes to `BIG_FILES_DIR`
+   (`scripts/sync_push.sh BIG_FILES_DIR data`), never to projects on a small quota. Each task receives the
+   fixed `ARGS` followed by its own manifest line as command-line arguments.
 3. **Apptainer image built off the cluster**: anything with a GPU. `scripts/build_sif.sh` on the
    laptop (or any machine with Docker or Apptainer), then `scripts/sync_push.sh IMAGES_DIR <file.sif> --verify`
    (the literal name `IMAGES_DIR`; the script resolves it from `cluster.env`), then prove it with
@@ -117,7 +142,9 @@ Then production QoS.
 
 ### Step 4. Watch, pull, read
 
-`scripts/status.sh [job id]`, then `scripts/sync_pull.sh <job dir>` (a name under `RESULTS_DIR`, wherever preflight put it). On any failure read
+`scripts/status.sh [job id]`, then `scripts/sync_pull.sh <job dir>` (a name under `RESULTS_DIR`, wherever preflight
+put it); it lands in `pulled/<job dir>-<timestamp>/`. The budget `status.sh` prints lags by hours (its
+accounting stamp says when), so a job you just ran is not in it yet. On any failure read
 the `.err` log first; a job that died at the wall still printed its verdicts before it died.
 TIMEOUT means resubmit the same job with a wall sized from the measured progress, not a new tool.
 
@@ -128,8 +155,9 @@ TIMEOUT means resubmit the same job with a wall sized from the measured progress
   `sync_push.sh --mirror` lists what it would delete and stops; show the human, then add `--confirm-delete`.
   (The toolkit never uses `--mirror` on its own.)
 - Never `scancel -u <user>` on your own initiative; ask. Cancelling and resubmitting doubles the spend.
-- Never run anything heavier than `ls`, `cat`, `squeue` on a login node, and never from `/gpfs/home`. The one
-  exception is the venv build by `install_wheels.sh` (a pip install of pre-built wheels: seconds, no network).
+- Never compute on a login node (queries such as `squeue`, `sacct`, `bsc_acct`, `sbatch --test-only` and small file
+  operations are fine), and never from `/gpfs/home`. The one heavier thing the toolkit runs there is the venv
+  build by `install_wheels.sh` (a pip install of pre-built wheels: seconds, no network).
 - Never change an sbatch file, image, wheel bundle or dataset that a queued or running job reads.
 - Never pass lists through `sbatch --export` (it splits on commas); render values into the file.
 - Never leave a job with no checkpoint on a wall longer than two hours.
@@ -156,7 +184,7 @@ The full list with what actually happened is `references/lessons.md`. The ones t
 
 ## Verification status
 
-What has been run on which machine lives in one place: `TESTING.md` at the repository root. Nothing else in this
+What has been run on which machine lives in one place: `TESTING.md` in this skill folder. Nothing else in this
 skill states a verification status; if a sentence here and that table disagree, the table wins.
 
 ## Files
@@ -166,9 +194,10 @@ skill states a verification status; if a sentence here and that table disagree, 
   `install_wheels_remote.sh` on the login node), `smoke_job.py`
 - `templates/`: `smoke.sbatch`, `image_smoke.sbatch`, `single_gpu.sbatch`, `multi_gpu_torchrun.sbatch`,
   `cpu_array.sbatch`, `container.def` + `Dockerfile` (same image, keep them in step), `requirements.example.txt`,
-  `ssh_config.example`
+  `ssh_config.example` (optional, for the human's own terminal; nothing in the procedure needs it)
 - `references/`: `lessons.md` (what happened, by class), `bsc-marenostrum5.md` (site facts, labelled
   measured / documented / unverified), `software-three-doors.md` (modules, wheels, images, per-OS builds),
   `troubleshooting.md` (symptom → cause → fix), `budget-and-queues.md` (billing, caps, walls, cost arithmetic)
+- `TESTING.md`: what has been run on which machine
 
 Load a reference when its topic comes up; `lessons.md` before any production submission.

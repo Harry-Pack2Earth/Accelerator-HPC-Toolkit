@@ -30,7 +30,7 @@ module load "$PY_MODULE" 2>/dev/null || module load intel mkl "$PY_MODULE"
 unset PYTHONHOME PYTHONPATH          # the module exports these and they shadow the venv
 source "${VENV}/bin/activate"
 # `|| rc=$?`: under `set -e` a failed srun would end the script here and strand the results on scratch.
-rc=0; srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" python __ENTRYPOINT__ ${LINE} || rc=$?
+rc=0; srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" python __ENTRYPOINT__ __ARGS__ ${LINE} || rc=$?   # fixed ARGS first, then this task's manifest line
 DEST="__RESULTS_DIR__/${SLURM_JOB_NAME}-${SLURM_ARRAY_JOB_ID}/${SLURM_ARRAY_TASK_ID}"; mkdir -p "$DEST"
 rsync -a "${RUN_DIR}/" "$DEST/"
 echo "end=$(date -u +%FT%TZ) rc=${rc}"

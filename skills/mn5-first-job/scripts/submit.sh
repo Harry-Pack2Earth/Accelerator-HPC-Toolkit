@@ -13,6 +13,7 @@ rm -f .last_job_id            # never let a failed submit leave an older job id 
 on_login mkdir -p "${SCRATCH_DIR}/logs" "${SCRATCH_DIR}/runs"
 echo "== test-only =="
 on_login "cd '${DIR_ABS}' && sbatch --test-only '${FILE}'" || { echo "sbatch rejected the file; fix it before --go" >&2; exit 3; }
+echo "(test-only: the job id above is consumed, not queued; 'N processors' counts hardware threads, two per core; the start time is SLURM's estimate)"
 # exact task count for any SLURM array spec: 0-9, 0-9%4, 0,5,9, 1-10:2, or none (= 1 job)
 TASKS="$(on_login "cat '${DIR_ABS}/${FILE}'" | python3 -c '
 import re, sys

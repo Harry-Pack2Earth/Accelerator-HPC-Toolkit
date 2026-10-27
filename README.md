@@ -44,12 +44,12 @@ skills/mn5-first-job/
   scripts/                 preflight, smoke loop, push/pull, submit, status, cost, image build, wheel bundle + venv install
   templates/               sbatch files (smoke, image smoke, single GPU, multi-GPU, CPU array), container.def + Dockerfile
   references/              lessons.md, bsc-marenostrum5.md, software-three-doors.md, troubleshooting.md, budget-and-queues.md
-TESTING.md                 what has been verified on which machine, and what has not
+  TESTING.md               what has been verified on which machine, and what has not (ships with the skill)
 ```
 
 ## Status
 
-See `TESTING.md`: it is the only place that states what has been run on which machine.
+See `skills/mn5-first-job/TESTING.md`: it is the only place that states what has been run on which machine.
 
 ## Scope
 

@@ -33,7 +33,7 @@ run_remote() {  # run_remote <host> <command...>
   if [[ $DRY -eq 1 ]]; then echo "[dry-run] ssh ${USER_NAME}@${host} -- $*" >&2; echo "dry-run"; return 0; fi
   # stdout only: the remote login shell prints module banners on stderr for every command. ANSI colours and
   # terminal hyperlinks are stripped so the output can be parsed.
-  ssh "${SSH_OPTS[@]}" "${USER_NAME}@${host}" "$@" 2>>preflight.stderr.log | strip_ansi
+  ssh "${SSH_OPTS[@]}" "${USER_NAME}@${host}" "$@" 2>>preflight.remote-banners.log | strip_ansi   # harmless module banners from the login shell
 }
 ESC="$(printf '\033')"
 strip_ansi() { sed -E "s/${ESC}\[[0-9;]*[A-Za-z]//g; s/${ESC}\]8;;[^${ESC}]*${ESC}\\\\//g"; }
@@ -121,6 +121,7 @@ SING_MODULES="$(run_remote "$LOGIN_HOST" 'module avail singularity apptainer 2>&
 echo "python modules: ${PY_MODULES:-none seen}"
 echo "container modules: ${SING_MODULES:-none seen}"
 
+BUDGET_TOTAL_KH=""; BUDGET_USED_KH=""; BUDGET_EXPIRES=""
 if [[ $DRY -eq 1 ]]; then
   PROJECT="<project>"; QOS_DEBUG="<debug qos>"; QOS_PROD="<production qos>"; KIND="unknown"; QOS_MAX_WALL=""; PROJECTS_QUOTA_GB=""
 else
@@ -154,6 +155,11 @@ if [[ "$KIND" == "acc" && "$LOGIN_HOST" == glogin* && $DRY -eq 0 ]]; then
   LOGIN_HOST="$FOUND_HOST"; echo "login=${LOGIN_HOST}"
 fi
 ACCT_RAW="$(run_remote "$LOGIN_HOST" bsc_acct)"; echo "bsc_acct:"; echo "$ACCT_RAW"
+# "Marenostrum5 ACC   100.00 (0.00,0.00)   74.59 (75%)" -> total and used khours (1 khour = 1,000 CPU-hours = 50 GPU-hours at 20 cores per GPU)
+BUDGET_LINE="$(echo "$ACCT_RAW" | grep -iE "Marenostrum5 +$( [[ "$KIND" == acc ]] && echo ACC || echo GPP )" | head -1)"
+BUDGET_TOTAL_KH="$(echo "$BUDGET_LINE" | grep -oE '[0-9]+\.[0-9]+' | head -1)"; BUDGET_USED_KH="$(echo "$BUDGET_LINE" | grep -oE '[0-9]+\.[0-9]+ *\([0-9]+%\)' | grep -oE '^[0-9]+\.[0-9]+')"
+BUDGET_EXPIRES="$(echo "$ACCT_RAW" | grep -oE 'Expiration Date: *[0-9-]+' | grep -oE '[0-9-]+$' || true)"
+[[ -n "$BUDGET_TOTAL_KH" && -n "$BUDGET_USED_KH" ]] && echo "budget: ${BUDGET_USED_KH} of ${BUDGET_TOTAL_KH} khours used (expires ${BUDGET_EXPIRES:-?}); the accounting stamp above lags by hours"
 QOS_LIMITS="$(run_remote "$LOGIN_HOST" "sacctmgr -n -P show qos '${QOS_PROD}','${QOS_DEBUG}' format=Name,MaxWall,MaxSubmitPU,MaxJobsPU 2>/dev/null" | grep -E '^[a-z]')"
 echo "qos limits (Name|MaxWall|MaxSubmitPU|MaxJobsPU):"; echo "${QOS_LIMITS:-not readable}"
 QOS_MAX_SUBMIT="$(echo "$QOS_LIMITS" | grep "^${QOS_PROD}|" | cut -d'|' -f3)"
@@ -197,6 +203,9 @@ VENV_DIR="${BIG_FILES_DIR}/venv"
 RESULTS_DIR="${RESULTS_DIR}"
 PROJECTS_QUOTA_GB="${PROJECTS_QUOTA_GB}"
 PYTHON_MODULE="${PYTHON_MODULE}"
+BUDGET_TOTAL_KH="${BUDGET_TOTAL_KH:-}"
+BUDGET_USED_KH="${BUDGET_USED_KH:-}"
+BUDGET_EXPIRES="${BUDGET_EXPIRES:-}"
 PYTHON_MODULES="${PY_MODULES}"
 CONTAINER_MODULES="${SING_MODULES}"
 # cores billed per GPU on the accelerated partition (check against bsc_acct after your first GPU job)
