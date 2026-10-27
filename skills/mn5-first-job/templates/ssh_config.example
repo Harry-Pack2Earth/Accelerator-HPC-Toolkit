@@ -1,0 +1,11 @@
+# Optional: append to ~/.ssh/config so humans can type `ssh bsc-login`. Scripts use cluster.env, not this.
+Host bsc-login
+    HostName glogin1.bsc.es        # alogin1.bsc.es for GPU (ACC) allocations
+    User CHANGE_ME
+    IdentityFile ~/.ssh/id_ed25519
+    ServerAliveInterval 60
+Host bsc-transfer
+    HostName transfer1.bsc.es      # transfer1..4 are equivalent; all data movement starts from the laptop
+    User CHANGE_ME
+    IdentityFile ~/.ssh/id_ed25519
+    ServerAliveInterval 60

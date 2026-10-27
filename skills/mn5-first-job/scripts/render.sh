@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# render.sh — fill __TOKENS__ in a template from cluster.env plus KEY=VALUE arguments.
+# Usage: scripts/render.sh <template> <output> [KEY=VALUE ...]
+# Fails if any __TOKEN__ is left unfilled, so a half-rendered sbatch never reaches the cluster.
+set -euo pipefail
+TEMPLATE="$1"; OUT="$2"; shift 2
+ENV_FILE="${HPC_ENV:-cluster.env}"
+[[ -f "$ENV_FILE" ]] || { echo "missing $ENV_FILE: run scripts/preflight.sh first" >&2; exit 2; }
+python3 - "$TEMPLATE" "$OUT" "$ENV_FILE" "$@" <<'PY'
+import re, sys
+template, out, env_file, *pairs = sys.argv[1:]
+values = {}
+for line in open(env_file):
+    line = line.strip()
+    if line and not line.startswith("#") and "=" in line:
+        k, v = line.split("=", 1); values[k] = v.strip().strip('"')
+for p in pairs:
+    k, v = p.split("=", 1); values[k] = v
+if "CONTAINER_MODULE" not in values and values.get("CONTAINER_MODULES"):
+    values["CONTAINER_MODULE"] = values["CONTAINER_MODULES"].split()[0]
+text = open(template).read()
+text = re.sub(r"__([A-Z0-9_]+)__", lambda m: values.get(m.group(1), m.group(0)), text)
+left = sorted(set(re.findall(r"__([A-Z0-9_]+)__", text)))
+if left:
+    sys.exit(f"unfilled tokens in {template}: {', '.join(left)} (pass KEY=VALUE)")
+open(out, "w").write(text)
+print(f"rendered {out}")
+PY

@@ -1,0 +1,6 @@
+# Example requirements for the container or the offline wheel bundle.
+# No torch here when using the NGC base image (it ships one). Pin versions you have tested locally.
+numpy
+pandas
+scikit-learn
+pyyaml

@@ -1,0 +1,33 @@
+# container.def: Apptainer/Singularity definition for a GPU Python workload.
+# Build it OFF the cluster (scripts/build_sif.sh), copy the .sif in (scripts/sync_push.sh).
+# The cluster has no outbound internet and no root, so nothing here can run there.
+Bootstrap: docker
+From: nvcr.io/nvidia/pytorch:25.01-py3
+# Pin a dated tag. Never :latest. A base bump can change the Python version under you
+# (one earlier tag shipped Python 3.10; packages needing >=3.11 refused to install).
+# The NGC image ships torch + CUDA + cuDNN matched to each other: do NOT list torch in requirements.txt,
+# a second torch wheel silently shadows the tuned one.
+
+%files
+    requirements.txt /opt/app/requirements.txt
+    src /opt/app/src
+
+%post
+    set -e
+    BASE_NUMPY="$(python -c 'import numpy; print(numpy.__version__)')"
+    echo "numpy==${BASE_NUMPY}" > /tmp/constraints.txt          # keep the base's numpy; it is matched to torch
+    python -m pip install --no-cache-dir -c /tmp/constraints.txt -r /opt/app/requirements.txt
+    chmod -R a+rX /opt/app        # the cluster runs the container as YOUR uid, not root; files must be readable
+    # Import check. Non-fatal on purpose: building linux/amd64 on an ARM laptop runs this under emulation,
+    # where x86 numeric libraries can crash at import (SIGILL). That is an emulation artifact, not a broken
+    # image. The real check is the smoke job on a GPU node.
+    python -c "import torch; print('torch', torch.__version__, 'cuda', torch.version.cuda)" \
+      || echo "WARN: import check skipped on this build host; verify on the cluster"
+
+%environment
+    export PYTHONUNBUFFERED=1
+    export PIP_DISABLE_PIP_VERSION_CHECK=1
+    export PYTHONPATH=/opt/app/src
+
+%runscript
+    exec python "$@"
