@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # sync_push.sh — copy files/dirs from the laptop to <PROJECTS_DIR>/<dest> through the transfer node.
-# Usage: scripts/sync_push.sh <dest: subdir of PROJECTS_DIR, or an absolute path such as $IMAGES_DIR> <path> [<path> ...] [--dry-run] [--verify] [--mirror [--confirm-delete]]
+# Usage: scripts/sync_push.sh <dest: IMAGES_DIR | WHEELS_DIR | RESULTS_DIR | an absolute path | a subdir of PROJECTS_DIR> <path> [<path> ...] [--dry-run] [--verify] [--mirror [--confirm-delete]]
 # --verify is MANDATORY for images: a 13 GB image once arrived as a 172 MB stub and every job died at mount.
 # Transfers always start on the laptop; the cluster cannot reach you. Interrupted transfers resume (--partial).
 set -euo pipefail
@@ -9,7 +9,13 @@ DEST=""; DRY=0; VERIFY=0; MIRROR=0; CONFIRM=0; PATHS=()
 for a in "$@"; do case "$a" in --dry-run) DRY=1 ;; --verify) VERIFY=1 ;; --mirror) MIRROR=1 ;; --confirm-delete) CONFIRM=1 ;; *) if [[ -z "$DEST" ]]; then DEST="$a"; else PATHS+=("$a"); fi ;; esac; done
 [[ -n "$DEST" && ${#PATHS[@]} -gt 0 ]] || { grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
 CLEAN=(); for p in "${PATHS[@]}"; do p="${p%/}"; [[ -e "$p" ]] || { echo "no such path: $p" >&2; exit 2; }; CLEAN+=("$p"); done
-[[ "$DEST" = /* ]] && DEST_ABS="$DEST" || DEST_ABS="${PROJECTS_DIR}/${DEST}"
+# destination: absolute path, a cluster.env directory NAME (IMAGES_DIR, WHEELS_DIR, VENV_DIR, RESULTS_DIR, BIG_FILES_DIR,
+# SCRATCH_DIR), or a subdirectory of PROJECTS_DIR
+case "$DEST" in
+  /*) DEST_ABS="$DEST" ;;
+  IMAGES_DIR|WHEELS_DIR|VENV_DIR|RESULTS_DIR|BIG_FILES_DIR|SCRATCH_DIR) DEST_ABS="${!DEST}" ;;
+  *) DEST_ABS="${PROJECTS_DIR}/${DEST}" ;;
+esac
 REMOTE="${CLUSTER_USER}@${TRANSFER_HOST}:${DEST_ABS}/"
 PATHS=("${CLEAN[@]}")   # a trailing slash would make rsync copy a directory's CONTENTS and break the verify manifest
 FLAGS=(-av --partial --human-readable --exclude .git --exclude __pycache__ --exclude .DS_Store)

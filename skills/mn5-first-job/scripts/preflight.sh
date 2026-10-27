@@ -142,7 +142,9 @@ else
   [[ -n "$QOS_PROD" ]] || QOS_PROD="$(echo "$QUEUES_RAW" | grep -oE "^\s*${KIND}_[a-z]+" | tr -d ' ' | grep -v -E 'debug|interactive' | head -1)"
   QOS_MAX_WALL="$(echo "$QUEUES_RAW" | grep -E "^\s*${QOS_PROD}( +\(D\))? +[0-9]" | sed -E 's/\(D\)//' | awk '{print $2}' | head -1)"
   # gpfs_projects quota line: "gpfs_projects GRP <usage> <unit> <quota> <unit> <limit> <unit> ..."
-  PROJECTS_QUOTA_GB="$(echo "$QUOTA_RAW" | grep gpfs_projects | head -1 | awk '{q=$5; u=$6; if (u=="MB") q=q/1024; if (u=="TB") q=q*1024; printf "%.1f", q}')"
+  # bsc_quota prints one block per group ("Printing quota for group <code>:"); take the gpfs_projects line of OUR project
+  PROJECTS_QUOTA_GB="$(echo "$QUOTA_RAW" | awk -v p="$PROJECT" '/quota for group/ {on = index($0, p) > 0} on && /gpfs_projects/ {q=$5; u=$6; if (u=="MB") q=q/1024; if (u=="TB") q=q*1024; printf "%.1f", q; exit}')"
+  [[ -n "$PROJECTS_QUOTA_GB" ]] || PROJECTS_QUOTA_GB="$(echo "$QUOTA_RAW" | grep gpfs_projects | head -1 | awk '{q=$5; u=$6; if (u=="MB") q=q/1024; if (u=="TB") q=q*1024; printf "%.1f", q}')"
 fi
 if [[ -z "$PROJECT" ]]; then echo "Could not read a project code from bsc_project; paste the output above to the human." >&2; exit 3; fi
 echo "project=$PROJECT kind=$KIND qos_debug=${QOS_DEBUG:-?} qos_prod=${QOS_PROD:-?}"

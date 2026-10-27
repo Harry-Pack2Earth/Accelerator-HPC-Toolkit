@@ -22,7 +22,7 @@ for p in pairs:
     k, v = p.split("=", 1); values[k] = v
 if "CONTAINER_MODULE" not in values and values.get("CONTAINER_MODULES"):
     # newest version listed (module avail prints 3.11.5 before 4.1.5)
-    def vkey(m): return [int(x) if x.isdigit() else x for x in m.split("/")[-1].split(".")]
+    def vkey(m): return [(0, int(x)) if x.isdigit() else (1, x) for x in m.split("/")[-1].replace("-", ".").split(".")]
     values["CONTAINER_MODULE"] = sorted(values["CONTAINER_MODULES"].split(), key=vkey)[-1]
 ep = values.get("ENTRYPOINT")
 if ep is not None and not ep.startswith("/"):

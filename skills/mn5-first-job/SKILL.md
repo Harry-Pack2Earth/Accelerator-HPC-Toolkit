@@ -22,11 +22,12 @@ scripts/sync_push.sh  ──rsync─▶ transfer node (transfer1-4.bsc.es)   all
                                             ▼
                                 GPFS, visible from every node:
                                   /gpfs/home/<proj>/<user>      tiny, shared, never run from here
-                                  /gpfs/projects/<proj>/<user>  durable: code, images, venv, RESULTS
-                                  /gpfs/scratch/<proj>/<user>   fast, not backed up, purged: job I/O, logs
+                                  /gpfs/projects/<proj>/<user>  durable: code, small results (big files too, if the quota allows)
+                                  /gpfs/scratch/<proj>/<user>   fast, not backed up, purged: job I/O, logs, and on a tiny
+                                                                projects quota also images, wheels, venv, results
                                             ▼
                                 compute nodes: run your job when the queue reaches it. No internet. No root.
-scripts/sync_pull.sh  ◀─rsync──  results from /gpfs/projects
+scripts/sync_pull.sh  ◀─rsync──  results from RESULTS_DIR (preflight decides: projects, or scratch on a tiny quota)
 ```
 
 A supercomputer is a queue, not a server. A job is a script that runs unattended when a slot frees
@@ -74,8 +75,9 @@ If it is not verified, read the `.err` log before changing anything.
    which pushes it and builds the venv once on the login node (rebuilds only when the bundle's content
    hash changes). Jobs test `VENV_DIR/.ready`.
 3. **Apptainer image built off the cluster**: anything with a GPU. `scripts/build_sif.sh` on the
-   laptop (or any machine with Docker or Apptainer), `scripts/sync_push.sh "$IMAGES_DIR" <file.sif> --verify`,
-   then prove it with `templates/image_smoke.sbatch` on the debug queue. The cluster is x86_64: an ARM laptop must
+   laptop (or any machine with Docker or Apptainer), then `scripts/sync_push.sh IMAGES_DIR <file.sif> --verify`
+   (the literal name `IMAGES_DIR`; the script resolves it from `cluster.env`), then prove it with
+   `templates/image_smoke.sbatch` on the debug queue. The cluster is x86_64: an ARM laptop must
    build `linux/amd64`, and import checks inside that emulated build can fail falsely. The image
    is proven only by the image smoke on a GPU node.
 
@@ -98,18 +100,20 @@ then `--go`. Values from `cluster.env` fill in by themselves; the rest you pass:
 | `smoke.sbatch` | none (`run_smoke.sh` does it) |
 | `image_smoke.sbatch` | `CPUS` (= CORES_PER_GPU), `SIF` (absolute path on the cluster) |
 | `single_gpu.sbatch` | `JOB_NAME`, `QOS` (`QOS_DEBUG` to test, `QOS_PROD` to run), `CPUS`, `WALLTIME` (HH:MM:SS), `SIF`, `ENTRYPOINT` (absolute, e.g. `/opt/app/src/train.py`), `ARGS` (may be empty) |
-| `multi_gpu_torchrun.sbatch` | the above plus `GPUS` (2-4), `RUN_ID` (one per training run, reused on resubmits), `CKPT_ARGS` (how your script takes a checkpoint dir and resume flag, or empty) |
+| `multi_gpu_torchrun.sbatch` | the above plus `GPUS` (2-4), `RUN_ID` (one per training run, reused on resubmits), `CKPT_FLAG` (your script's checkpoint-dir flag, e.g. `--checkpoint-dir`, or empty) and `RESUME_FLAG` (e.g. `--resume`, or empty); the job appends its own checkpoint path |
 | `cpu_array.sbatch` | `JOB_NAME`, `QOS`, `CPUS` (per task), `WALLTIME`, `LAST` (last task index), `CONCURRENT`, `MANIFEST` (absolute), `ENTRYPOINT` (absolute), `ARGS` |
 
 - `templates/single_gpu.sbatch`: one GPU, one container, one entry point.
 - `templates/multi_gpu_torchrun.sbatch`: 2 to 4 GPUs on ONE node, requeue + resume from checkpoint.
 - `templates/cpu_array.sbatch`: N independent CPU tasks from a manifest file; no GPU requested.
 
-Start every new job shape on the debug queue with a tiny input. Then production QoS.
+Start every new job shape on the debug queue with a tiny input (one job at a time there: it allows a single
+submitted job per user, so a smoke and an image smoke go one after the other, and an array test there has one task).
+Then production QoS.
 
 ### Step 4. Watch, pull, read
 
-`scripts/status.sh [job id]`, then `scripts/sync_pull.sh results/<job dir>`. On any failure read
+`scripts/status.sh [job id]`, then `scripts/sync_pull.sh <job dir>` (a name under `RESULTS_DIR`, wherever preflight put it). On any failure read
 the `.err` log first; a job that died at the wall still printed its verdicts before it died.
 TIMEOUT means resubmit the same job with a wall sized from the measured progress, not a new tool.
 
@@ -118,6 +122,7 @@ TIMEOUT means resubmit the same job with a wall sized from the measured progress
 - Never submit without `sbatch --test-only` passing and the cost shown to the human.
 - Never delete on GPFS without listing first, and never `rm -rf` a path you did not create this session.
   `sync_push.sh --mirror` lists what it would delete and stops; show the human, then add `--confirm-delete`.
+  (The toolkit never uses `--mirror` on its own.)
 - Never `scancel -u <user>` on your own initiative; ask. Cancelling and resubmitting doubles the spend.
 - Never run anything heavier than `ls`, `cat`, `squeue` on a login node, and never from `/gpfs/home`. The one
   exception is the venv build by `install_wheels.sh` (a pip install of pre-built wheels: seconds, no network).

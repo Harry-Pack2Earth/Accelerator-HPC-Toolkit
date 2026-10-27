@@ -8,7 +8,7 @@ set -euo pipefail
 source "$(dirname "$0")/_env.sh"
 DIR="${1:-}"; FILE="${2:-}"; GO=0; [[ "${3:-}" == "--go" ]] && GO=1
 [[ -n "$DIR" && -n "$FILE" ]] || { grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
-[[ "$DIR" = /* ]] && DIR_ABS="$DIR" || DIR_ABS="${DIR_ABS}"
+[[ "$DIR" = /* ]] && DIR_ABS="$DIR" || DIR_ABS="${PROJECTS_DIR}/${DIR}"
 rm -f .last_job_id            # never let a failed submit leave an older job id behind for the next step to read
 on_login mkdir -p "${SCRATCH_DIR}/logs" "${SCRATCH_DIR}/runs"
 echo "== test-only =="

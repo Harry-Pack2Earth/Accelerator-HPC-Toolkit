@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # sync_pull.sh — copy a results directory from the cluster to ./pulled/<timestamp>/ on the laptop.
-# Usage: scripts/sync_pull.sh <remote dir relative to PROJECTS_DIR, or absolute> [--dry-run]
+# Usage: scripts/sync_pull.sh <job dir under RESULTS_DIR, or an absolute path> [--dry-run]
 set -euo pipefail
 source "$(dirname "$0")/_env.sh"
 SRC="${1:-}"; DRY=0; [[ "${2:-}" == "--dry-run" || "${1:-}" == "--dry-run" ]] && DRY=1
 [[ -n "$SRC" && "$SRC" != "--dry-run" ]] || { grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 2; }
-[[ "$SRC" = /* ]] || SRC="${PROJECTS_DIR}/${SRC}"
+# a relative path is a job directory under RESULTS_DIR (projects, or scratch/results on a tiny quota)
+[[ "$SRC" = /* ]] || SRC="${RESULTS_DIR}/${SRC}"
 OUT="pulled/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$OUT"
 # -rlt not -a: no attempt to set owner/group/perms on the laptop side (fails in sandboxed folders and is pointless here)

@@ -3,7 +3,7 @@
 # Usage: scripts/build_sif.sh --def <file.def> --out <image.sif> [--force] [--mode native|docker|docker-def]
 #
 # The cluster is x86_64 (linux/amd64). The image must be too, whatever your laptop is.
-#   native      Linux x86_64 / WSL2 with apptainer installed: build from the .def (--fakeroot, then sudo). Verified.
+#   native      Linux x86_64 / WSL2 with apptainer installed: build from the .def (--fakeroot, then sudo).
 #   docker      macOS, or any machine with Docker but no apptainer: Docker builds the image from the Dockerfile next
 #               to the .def (same content), forced to linux/amd64, then apptainer (in a container) converts it to .sif
 #               straight from the Docker daemon. Nothing runs inside apptainer, so no privileged nesting and no
@@ -17,7 +17,7 @@
 # Expect the first build to pull a 10-20 GB base image. Build in a terminal that will stay awake.
 set -euo pipefail
 DEF=""; OUT=""; FORCE=0; MODE="auto"
-# Pinned by digest (apptainer 1.4.4, the build that converted the verified images). Never :latest: a builder drift once
+# Pinned by digest (apptainer 1.4.4). Never :latest: a builder drift once
 # broke every build on a machine with nothing else changed.
 APPTAINER_IMAGE="${APPTAINER_IMAGE:-kaczmarj/apptainer@sha256:3ad4e790c611a2c424e3b063f8e0c13d3eebad801a39c441d42d2019f539b11b}"
 while [[ $# -gt 0 ]]; do case "$1" in
@@ -34,7 +34,9 @@ fi
 FLAGS=(); [[ $FORCE -eq 1 ]] && FLAGS+=(--force)
 # NOTE: every "${FLAGS[@]}" below is written ${FLAGS[@]+"${FLAGS[@]}"}: stock macOS /bin/bash is 3.2, where an
 # empty array under `set -u` is an unbound variable and the script would die at the convert step, after the full build.
-START_TS="$(date +%s)"
+# size+mtime of a pre-existing output, so "the build produced a NEW file" never depends on any clock (VM clocks drift)
+sig() { stat -c '%s %Y' "$1" 2>/dev/null || stat -f '%z %m' "$1" 2>/dev/null || echo none; }
+PRE_SIG="$(sig "$OUT")"
 if [[ "$MODE" == "auto" ]]; then
   if command -v apptainer >/dev/null 2>&1 || command -v singularity >/dev/null 2>&1; then MODE=native
   elif command -v docker >/dev/null 2>&1; then MODE=docker
@@ -63,7 +65,7 @@ if [[ "$MODE" == "native" ]]; then
   if ! "$BIN" build --fakeroot ${FLAGS[@]+"${FLAGS[@]}"} "$OUT" "$DEF" 2> >(tee /tmp/build_sif.err >&2); then
     # Two known failures of --fakeroot: no subuid mapping for the user, and WSL2, where apptainer tries to mount
     # binfmt_misc that Windows interop already mounted ("failed to mount binfmt_misc filesystem: invalid argument").
-    # Both are fixed by building as real root, which every Linux/WSL user with sudo can do. Verified Oct 2026.
+    # Both are fixed by building as real root, which every Linux/WSL user with sudo can do.
     if command -v sudo >/dev/null 2>&1; then
       echo "fakeroot build failed ($(grep -m1 -oE 'FATAL.*' /tmp/build_sif.err || echo see above)); retrying with sudo" >&2
       # sudo -n never prompts: an agent cannot type a password. If it needs one, hand the exact command to the human.
@@ -98,10 +100,11 @@ fi
 echo
 # The image must be NEW: a failed build under --force can leave an older file in place and a wrapper would call it built.
 [[ -s "$OUT" ]] || { echo "ERROR: $OUT is missing or empty after the build" >&2; exit 1; }
-OUT_TS="$(stat -f %m "$OUT" 2>/dev/null || stat -c %Y "$OUT")"
-[[ "$OUT_TS" -ge "$START_TS" ]] || { echo "ERROR: $OUT predates this build (an older image is still there); rebuild with --force" >&2; exit 1; }
+[[ "$(sig "$OUT")" != "$PRE_SIG" ]] || { echo "ERROR: $OUT is unchanged since before the build (an older image is still there); rebuild with --force" >&2; exit 1; }
 ls -lh "$OUT"
 # A build killed mid-write leaves a .sif that LOOKS complete. Check the header before trusting it.
 if [[ "$MODE" == "native" ]]; then "$BIN" sif list "$OUT" | tail -3 || { echo "ERROR: image header unreadable; rebuild with --force" >&2; exit 1; }
 else docker run --rm --platform linux/amd64 -v "$WORK:/work" "$APPTAINER_IMAGE" sif list "/work/${OUT_ABS#"$WORK"/}" | tail -3 || { echo "ERROR: image header unreadable; rebuild with --force" >&2; exit 1; }; fi
-echo "Next: scripts/sync_push.sh images $OUT    (then verify with a debug-queue job: a stale or broken image fails in seconds)"
+ENV_FILE="${HPC_ENV:-cluster.env}"; IMG_DEST="IMAGES_DIR"
+[[ -f "$ENV_FILE" ]] && IMG_DEST="$(grep -E '^IMAGES_DIR=' "$ENV_FILE" | cut -d= -f2- | tr -d '"')"
+echo "Next: scripts/sync_push.sh ${IMG_DEST:-IMAGES_DIR} $OUT --verify    (then templates/image_smoke.sbatch on the debug queue: a stale or broken image fails in seconds)"

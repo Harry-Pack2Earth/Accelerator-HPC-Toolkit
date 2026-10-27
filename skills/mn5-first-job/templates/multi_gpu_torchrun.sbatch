@@ -19,11 +19,16 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 module load __CONTAINER_MODULE__
 RUN_DIR="__SCRATCH_DIR__/runs/${SLURM_JOB_NAME}-__RUN_ID__"   # RUN_ID: chosen once per training run, reused on every resubmit of it (a requeued job must find its own checkpoints; a NEW run must not)
 mkdir -p "${RUN_DIR}/checkpoints"; cd "${RUN_DIR}"
-export XDG_CACHE_HOME="__SCRATCH_DIR__/cache/${SLURM_JOB_NAME}"   # caches: explicit, off $HOME, and OUTSIDE the run dir so they are never copied to results
+export XDG_CACHE_HOME="__SCRATCH_DIR__/cache/${SLURM_JOB_NAME}-__RUN_ID__"   # caches: explicit, off $HOME, and OUTSIDE the run dir so they are never copied to results
 export HF_HOME="${XDG_CACHE_HOME}/hf" HF_HUB_CACHE="${XDG_CACHE_HOME}/hf/hub" TRITON_CACHE_DIR="${XDG_CACHE_HOME}/triton"
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1    # no internet on the node: a hub client that tries to phone home hangs, then fails
 mkdir -p "${XDG_CACHE_HOME}"
 NGPU="${SLURM_GPUS_ON_NODE:-__GPUS__}"
+# How YOUR script takes a checkpoint directory and a resume switch. CKPT_FLAG="--checkpoint-dir" makes the job pass
+# "--checkpoint-dir <run dir>/checkpoints"; RESUME_FLAG="--resume" is appended as is. Both may be empty (then a requeue
+# restarts from scratch). An unknown flag kills a typical argparse script at once, so match your script exactly.
+CKPT_FLAG="__CKPT_FLAG__"; RESUME_FLAG="__RESUME_FLAG__"
+CKPT_OPTS=(); [[ -n "$CKPT_FLAG" ]] && CKPT_OPTS=("$CKPT_FLAG" "${RUN_DIR}/checkpoints")
 echo "node=$(hostname) start=$(date -u +%FT%TZ) gpus=${NGPU} restart=${SLURM_RESTART_COUNT:-0}"
 nvidia-smi
 # A whole 4-GPU node can queue for a day while 2 GPUs are free in minutes. SLURM never grants fewer GPUs than
@@ -33,10 +38,9 @@ nvidia-smi
 rc=0; srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" \
   singularity exec --nv \
     --bind "__PROJECTS_DIR__:__PROJECTS_DIR__" --bind "__SCRATCH_DIR__:__SCRATCH_DIR__" \
-    "__SIF__" torchrun --standalone --nproc_per_node="${NGPU}" __ENTRYPOINT__ __CKPT_ARGS__ __ARGS__ || rc=$?
-# CKPT_ARGS is how YOUR script takes a checkpoint dir and a resume switch, e.g. CKPT_ARGS="--checkpoint-dir ${RUN_DIR}/checkpoints --resume";
-# pass CKPT_ARGS="" if it has none (then a requeue restarts from scratch). An unknown flag kills a typical argparse script at once.
-mkdir -p "__RESULTS_DIR__"
-cp -r "${RUN_DIR}" "__RESULTS_DIR__/${SLURM_JOB_NAME}-${SLURM_JOB_ID}"
+    "__SIF__" torchrun --standalone --nproc_per_node="${NGPU}" __ENTRYPOINT__ ${CKPT_OPTS[@]+"${CKPT_OPTS[@]}"} ${RESUME_FLAG} __ARGS__ || rc=$?
+DEST="__RESULTS_DIR__/${SLURM_JOB_NAME}-__RUN_ID__"; mkdir -p "$DEST"
+# rsync, not cp: a requeued job must not nest a second copy; checkpoints stay on scratch (many GB, resumable there)
+rsync -a --exclude checkpoints --exclude cache "${RUN_DIR}/" "$DEST/"
 echo "end=$(date -u +%FT%TZ) rc=${rc}"
 exit "${rc}"
