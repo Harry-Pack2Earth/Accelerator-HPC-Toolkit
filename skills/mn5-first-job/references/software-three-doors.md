@@ -53,6 +53,9 @@ Apple-Silicon specifics the team hit:
 - Import checks in `%post` crash under emulation (SIGILL in x86 numeric libraries). The template makes them non-fatal.
   The cluster smoke is the proof.
 - The Docker VM shares only `$HOME`. Build from a folder under `$HOME`.
+- The conversion unpacks the whole rootfs (about twice the image size) in a temp dir. The script binds
+  `~/.apptainer-cache/tmp` for it; inside the builder container it would land on the VM's small root disk
+  ("no space left on device" at 13 GB on colima's 19 GB root).
 - A 10-20 GB base pull plus the build takes long enough for the laptop to sleep: `nohup caffeinate -i scripts/build_sif.sh ...`.
 - Verify: `apptainer sif list <file>` (or the same inside the builder container) shows a squashfs partition for amd64.
 - Some CUDA extensions (ones compiled at install time) cannot be built on a Mac at all; use a base image that ships

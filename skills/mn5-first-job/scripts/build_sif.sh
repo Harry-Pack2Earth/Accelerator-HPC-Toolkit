@@ -56,7 +56,10 @@ docker_prep() {
   case "$DEF_ABS" in "$WORK"/*) ;; *) echo "ERROR: the .def/Dockerfile must be under the working folder $WORK (container paths are /work/...)" >&2; exit 2 ;; esac
   case "$OUT_ABS" in "$WORK"/*) ;; *) echo "ERROR: --out must be under the working folder $WORK" >&2; exit 2 ;; esac
   case "$WORK" in "$HOME"/*) ;; *) echo "NOTE: on macOS the Docker VM shares only \$HOME; a workdir outside it mounts EMPTY and the build fails at def open. Move under \$HOME." >&2 ;; esac
-  CACHE="${APPTAINER_CACHE_DIR:-$HOME/.apptainer-cache}"; mkdir -p "$CACHE"   # keeps pulled layers between builds
+  CACHE="${APPTAINER_CACHE_DIR:-$HOME/.apptainer-cache}"; mkdir -p "$CACHE/tmp"   # keeps pulled layers between builds
+  # The unpacked rootfs (about 2x the image size) must NOT land inside the builder container: on colima that is the
+  # VM's small root disk and a 13 GB image dies with "no space left on device". Bind a host folder as the temp dir.
+  APPT_MOUNTS=(-v "$CACHE:/root/.apptainer" -v "$CACHE/tmp:/tmp-apptainer" -e APPTAINER_TMPDIR=/tmp-apptainer -e APPTAINER_CACHEDIR=/root/.apptainer/cache)
 }
 if [[ "$MODE" == "native" ]]; then
   BIN="$(command -v apptainer || command -v singularity)"
@@ -89,12 +92,12 @@ elif [[ "$MODE" == "docker" ]]; then
   docker build --platform linux/amd64 -t "$TAG" -f "$DOCKERFILE" "$WORK"
   echo "== 2/2 convert $TAG -> $OUT (apptainer in a container reads the Docker daemon; nothing runs) =="
   docker run --rm --platform linux/amd64 -v /var/run/docker.sock:/var/run/docker.sock \
-    -v "$WORK:/work" -v "$CACHE:/root/.apptainer" -w /work "$APPTAINER_IMAGE" \
+    -v "$WORK:/work" "${APPT_MOUNTS[@]}" -w /work "$APPTAINER_IMAGE" \
     build ${FLAGS[@]+"${FLAGS[@]}"} "/work/${OUT_ABS#"$WORK"/}" "docker-daemon://${TAG}"
 else
   docker_prep
   echo "== docker-def: apptainer-in-docker ($APPTAINER_IMAGE), platform linux/amd64, workdir $WORK =="
-  docker run --rm --privileged --platform linux/amd64 -v "$WORK:/work" -v "$CACHE:/root/.apptainer" -w /work "$APPTAINER_IMAGE" \
+  docker run --rm --privileged --platform linux/amd64 -v "$WORK:/work" "${APPT_MOUNTS[@]}" -w /work "$APPTAINER_IMAGE" \
     build ${FLAGS[@]+"${FLAGS[@]}"} "/work/${OUT_ABS#"$WORK"/}" "/work/${DEF_ABS#"$WORK"/}"
 fi
 echo
