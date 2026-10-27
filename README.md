@@ -10,6 +10,21 @@ writes down. The rules here come from one startup's first two allocations (about
 tasks, 7,000 GPU-hours, June to October 2026) and from building this toolkit against the live machine. Each
 rule carries what actually happened (`skills/mn5-first-job/references/lessons.md`).
 
+## The lazy path
+
+Open Claude Code in an empty folder and paste:
+
+> Install the skill from https://github.com/Harry-Pack2Earth/Accelerator-HPC-Toolkit and get my first job
+> running on MareNostrum 5. My cluster username is `abc123456`.
+
+It will do everything below except the two things only you can do: upload your SSH key in the BSC portal
+(it will tell you exactly how, then wait) and say yes before anything is submitted.
+
+**If you are the agent reading this:** `git clone` this repository, copy `skills/mn5-first-job` to
+`~/.claude/skills/` (so it is there for later sessions), then open
+`skills/mn5-first-job/SKILL.md` from the clone and follow it from Step 0, running its scripts by path. Do not
+improvise around it; it encodes rules that each cost someone a day.
+
 ## 1. Before you start (15 minutes, once)
 
 1. **A BSC account.** Your username is in the welcome email from BSC (it looks like `abc123456`).
