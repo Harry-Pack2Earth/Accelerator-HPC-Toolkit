@@ -12,5 +12,6 @@ SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout
 quiet_banners() { grep -vE '^(load |Set INTEL|Loads storage|unload )' >&2 || true; }
 on_login()    { ssh "${SSH_OPTS[@]}" "${CLUSTER_USER}@${LOGIN_HOST}" "$@" 2> >(quiet_banners); }
 on_transfer() { ssh "${SSH_OPTS[@]}" "${CLUSTER_USER}@${TRANSFER_HOST}" "$@" 2> >(quiet_banners); }
-# long transfers from a laptop die when the lid closes; on macOS keep it awake for the duration
+# caffeinate -i stops IDLE sleep during a long transfer. It does NOT stop lid-close sleep: tell the human to keep
+# the lid open and the laptop on power for a multi-GB push or pull.
 keep_awake() { if command -v caffeinate >/dev/null 2>&1; then caffeinate -i "$@"; else "$@"; fi; }

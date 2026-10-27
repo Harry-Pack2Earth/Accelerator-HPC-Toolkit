@@ -6,9 +6,10 @@ and CPU-array jobs, with the guardrails a shared, budgeted machine needs.
 
 It exists because the hardest part of a supercomputer for a startup is not the science. It is the first two
 weeks: keys, transfer nodes, queues, quotas, containers with no internet, and the twenty small rules nobody
-writes down. Every rule in this toolkit was paid for by a real failure during one startup's first two
-allocations (about 500 submissions, 21,000 tasks, 7,000 GPU-hours, June to October 2026). The evidence is in
-`skills/mn5-first-job/references/lessons.md`.
+writes down. The rules in this toolkit come from one startup's first two allocations (about 500 submissions, 21,000 tasks,
+7,000 GPU-hours, June to October 2026) and from building the toolkit itself against the live machine. Each rule
+carries what actually happened in `skills/mn5-first-job/references/lessons.md`; the few taken from site guidance
+without an incident are marked there.
 
 ## Install
 
@@ -21,7 +22,7 @@ The skill is the folder `skills/mn5-first-job/`. Copy it where your agent reads 
 | Codex / Cursor / others | the tool's skills directory, same folder |
 
 ```
-git clone https://github.com/Harry-Pack2Earth/Accelerator-HPC-Toolkit.git
+git clone <this repository's URL>
 cp -r Accelerator-HPC-Toolkit/skills/mn5-first-job ~/.claude/skills/
 ```
 

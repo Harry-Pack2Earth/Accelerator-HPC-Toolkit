@@ -17,14 +17,18 @@ fi
 "$HERE/submit.sh" smoke smoke.sbatch --go
 JOB_ID="$(cat .last_job_id)"
 echo "waiting for job ${JOB_ID} (debug queue; usually minutes)"
+STATE=""; DONE=0
 for _ in $(seq 1 120); do
-  STATE="$(on_login "sacct -j '${JOB_ID}' -X -n -o State" | head -1 | tr -d ' ')"
+  STATE="$(on_login "sacct -j '${JOB_ID}' -X -n -o State" 2>/dev/null | head -1 | tr -d ' ' || true)"   # one ssh hiccup must not end the wait
   case "$STATE" in
-    COMPLETED|FAILED|TIMEOUT|CANCELLED*|OUT_OF_MEMORY|NODE_FAIL) break ;;
+    COMPLETED|FAILED|TIMEOUT|CANCELLED*|OUT_OF_MEMORY|NODE_FAIL|PREEMPTED|BOOT_FAIL|DEADLINE) DONE=1; break ;;
     *) printf '.'; sleep 15 ;;
   esac
 done
 echo; echo "state=${STATE:-unknown}"
+if [[ $DONE -eq 0 ]]; then
+  echo "Job ${JOB_ID} is still ${STATE:-queued} after 30 min (queue busy). Not pulling yet. Check later with: scripts/status.sh ${JOB_ID}; then: scripts/sync_pull.sh ${RESULTS_DIR}/smoke-${JOB_ID}" >&2; exit 4
+fi
 "$HERE/sync_pull.sh" "${RESULTS_DIR}/smoke-${JOB_ID}"
 PULLED="$(ls -td pulled/* | head -1)"
 if [[ -f "${PULLED}/smoke_result.json" ]] && grep -q '"machine"' "${PULLED}/smoke_result.json"; then

@@ -17,7 +17,9 @@
 # Expect the first build to pull a 10-20 GB base image. Build in a terminal that will stay awake.
 set -euo pipefail
 DEF=""; OUT=""; FORCE=0; MODE="auto"
-APPTAINER_IMAGE="${APPTAINER_IMAGE:-kaczmarj/apptainer:latest}"
+# Pinned by digest (apptainer 1.4.4, the build that converted the verified images). Never :latest: a builder drift once
+# broke every build on a machine with nothing else changed.
+APPTAINER_IMAGE="${APPTAINER_IMAGE:-kaczmarj/apptainer@sha256:3ad4e790c611a2c424e3b063f8e0c13d3eebad801a39c441d42d2019f539b11b}"
 while [[ $# -gt 0 ]]; do case "$1" in
   --def) DEF="$2"; shift 2 ;; --out) OUT="$2"; shift 2 ;; --force) FORCE=1; shift ;; --mode) MODE="$2"; shift 2 ;;
   *) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;; esac; done
@@ -49,6 +51,8 @@ docker_prep() {
   [[ "$DOCKER_ARCH" == "x86_64" || "$DOCKER_ARCH" == "amd64" ]] || echo "Docker host is $DOCKER_ARCH: building linux/amd64 under emulation (slow; needs Rosetta/qemu enabled)."
   DEF_DIR="$(cd "$(dirname "$DEF")" && pwd)"; DEF_ABS="${DEF_DIR}/$(basename "$DEF")"; OUT_ABS="$(cd "$(dirname "$OUT")" && pwd)/$(basename "$OUT")"
   WORK="$(pwd)"   # %files / COPY paths are relative to this directory
+  case "$DEF_ABS" in "$WORK"/*) ;; *) echo "ERROR: the .def/Dockerfile must be under the working folder $WORK (container paths are /work/...)" >&2; exit 2 ;; esac
+  case "$OUT_ABS" in "$WORK"/*) ;; *) echo "ERROR: --out must be under the working folder $WORK" >&2; exit 2 ;; esac
   case "$WORK" in "$HOME"/*) ;; *) echo "NOTE: on macOS the Docker VM shares only \$HOME; a workdir outside it mounts EMPTY and the build fails at def open. Move under \$HOME." >&2 ;; esac
   CACHE="${APPTAINER_CACHE_DIR:-$HOME/.apptainer-cache}"; mkdir -p "$CACHE"   # keeps pulled layers between builds
 }
@@ -62,8 +66,13 @@ if [[ "$MODE" == "native" ]]; then
     # Both are fixed by building as real root, which every Linux/WSL user with sudo can do. Verified Oct 2026.
     if command -v sudo >/dev/null 2>&1; then
       echo "fakeroot build failed ($(grep -m1 -oE 'FATAL.*' /tmp/build_sif.err || echo see above)); retrying with sudo" >&2
-      sudo "$BIN" build ${FLAGS[@]+"${FLAGS[@]}"} "$OUT" "$DEF" || { echo "sudo build failed too; see the messages above" >&2; exit 1; }
-      sudo chown "$(id -u):$(id -g)" "$OUT"
+      # sudo -n never prompts: an agent cannot type a password. If it needs one, hand the exact command to the human.
+      if ! sudo -n true 2>/dev/null; then
+        echo "sudo needs a password. A HUMAN must run this in a terminal, then re-run this script:" >&2
+        echo "  sudo $BIN build ${FLAGS[*]+"${FLAGS[*]}"} '$OUT' '$DEF' && sudo chown $(id -u):$(id -g) '$OUT'" >&2; exit 5
+      fi
+      sudo -n "$BIN" build ${FLAGS[@]+"${FLAGS[@]}"} "$OUT" "$DEF" || { echo "sudo build failed too; see the messages above" >&2; exit 1; }
+      sudo -n chown "$(id -u):$(id -g)" "$OUT"
     else
       echo "fakeroot build failed and no sudo: ask the admin to add you to /etc/subuid, or build on another machine" >&2; exit 1
     fi

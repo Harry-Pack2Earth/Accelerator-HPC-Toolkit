@@ -8,7 +8,7 @@ Nothing installs on the cluster. No internet on the nodes, no root. Everything a
 | 2. Offline wheel bundle → venv on GPFS | CPU Python: pandas, scikit-learn, boosted trees | `scripts/build_wheels.sh` on the laptop → `scripts/install_wheels.sh <bundle>` (pushes, builds the venv once on the login node) | a 2-task `cpu_array` on the debug queue |
 | 3. Apptainer image | anything with a GPU | `scripts/build_sif.sh` off-cluster → push `--verify` | `templates/image_smoke.sbatch` on a GPU node |
 
-Most founders start at door 2. Go to door 3 only when a GPU is needed.
+Most founders start at door 2. Go to door 3 only when a GPU is needed. Verification status of each door: `TESTING.md`.
 
 ## Door 2 details
 
@@ -36,14 +36,14 @@ Most founders start at door 2. Go to door 3 only when a GPU is needed.
 
 The cluster is x86_64. The image must be `linux/amd64`. That is the whole cross-platform story.
 
-| Laptop | Path | Verified by the team |
+| Laptop | Path | Notes (status: TESTING.md) |
 |---|---|---|
-| Linux x86_64 with Apptainer | `scripts/build_sif.sh --mode native` (`--fakeroot`; or `sudo`) | in progress (Ubuntu 24.04 VM, Oct 2026): no `apptainer` apt package on 24.04; install the `.deb` from https://github.com/apptainer/apptainer/releases (1.5.5 worked) |
-| macOS, Apple Silicon | `scripts/build_sif.sh --mode docker`: Docker Desktop or colima builds the image from the Dockerfile for linux/amd64 (Rosetta or qemu), apptainer in a container converts it from the daemon | **yes** (macOS 27.0.1, colima, 27 Oct 2026): 13 GB image, pushed with sha verify, image smoke on an H100 pending. The older `--mode docker-def` (apptainer itself in a privileged container running `%post`) built every image on macOS 26 and fails on macOS 27 at "Failed to spawn stage 1" |
-| macOS, Intel | same docker mode, no emulation | no (same code path, native amd64; the macOS 27 failure may or may not apply) |
-| Windows x86_64 | Ubuntu under WSL2, Apptainer `.deb` there, native mode | **yes** (Server 2022 + WSL2 Ubuntu 24.04, Oct 2026): preflight and smoke identical to Linux; `--fakeroot` fails in WSL2 (binfmt_misc already mounted by Windows interop), `sudo apptainer build` works, the script falls back to it |
-| Windows on ARM | docker mode under emulation, or a cloud x86_64 VM | no |
-| Any | a cheap x86_64 Linux cloud VM with Apptainer: build there, `rsync` from there to the transfer node | no |
+| Linux x86_64 with Apptainer | `scripts/build_sif.sh --mode native` (`--fakeroot`, then `sudo -n`; if sudo needs a password the script prints the command for the human) | Ubuntu 24.04 has no `apptainer` apt package: install the `.deb` from https://github.com/apptainer/apptainer/releases |
+| macOS, Apple Silicon | `scripts/build_sif.sh --mode docker`: Docker Desktop or colima builds the image from the Dockerfile for linux/amd64 (Rosetta or qemu), apptainer in a container converts it from the daemon | The older `--mode docker-def` (apptainer itself in a privileged container running `%post`) built every image of the authors on macOS 26 and fails on macOS 27 at "Failed to spawn stage 1" |
+| macOS, Intel | same docker mode, no emulation | same code path, native amd64; not exercised |
+| Windows x86_64 | Ubuntu under WSL2, Apptainer `.deb` there, native mode | `--fakeroot` fails in WSL2 (binfmt_misc already mounted by Windows interop); the script falls back to `sudo` |
+| Windows on ARM | docker mode under emulation, or a cloud x86_64 VM | not exercised |
+| Any | a cheap x86_64 Linux cloud VM with Apptainer: build there, `rsync` from there to the transfer node | a 2-vCPU VM takes ~40 min to compress a 20 GB rootfs; use 8+ vCPUs |
 
 Apple-Silicon specifics the team hit:
 - The colima profile that built every production image had `rosetta: false` (qemu binfmt); the script's own comments

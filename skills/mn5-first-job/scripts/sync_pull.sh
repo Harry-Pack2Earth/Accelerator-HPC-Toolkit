@@ -14,6 +14,6 @@ echo "rsync ${FLAGS[*]} ${CLUSTER_USER}@${TRANSFER_HOST}:${SRC}/ ${OUT}/"
 rc=0; keep_awake rsync "${FLAGS[@]}" "${CLUSTER_USER}@${TRANSFER_HOST}:${SRC}/" "${OUT}/" || rc=$?
 # exit 23 = "some files/attrs were not transferred": normal for a missing optional source or an attribute the laptop
 # refuses. It is only a failure when nothing arrived.
-if [[ $rc -eq 23 && -n "$(ls -A "$OUT")" ]]; then echo "rsync exit 23 but files arrived; continuing"; rc=0; fi
+if [[ $rc -eq 23 && -n "$(ls -A "$OUT")" ]]; then echo "rsync exit 23: some files or attributes were not transferred (its messages are above). Files that did arrive are in $OUT; check the list before trusting a partial pull."; rc=0; fi
 if [[ $rc -ne 0 ]]; then rmdir "$OUT" 2>/dev/null || true; echo "pull failed (rsync exit $rc)" >&2; exit "$rc"; fi
 echo "pulled into ${OUT}"

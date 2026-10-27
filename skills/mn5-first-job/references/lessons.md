@@ -190,6 +190,11 @@ Items marked *documented, not seen* are site guidance the team followed without 
 51. **Rule:** Know the QoS maximum wall (3 days on the production GPU QoS, 2 hours on debug). Shorter walls on a resume
     get better priority.
 
+51b. **Rule:** The debug QoS has its own tiny submission cap: one job per user. Smoke with one task there, one at a
+    time; arrays and anything parallel go to the production QoS.
+    **Seen (27 Oct 2026):** a 2-task array on `acc_debug` was rejected with `QOSMaxSubmitJobPerUserLimit`;
+    `sacctmgr` shows `MaxSubmitPU 1, MaxJobsPU 1` for it and 366 for `acc_ehpc`.
+
 ## Budget
 
 52. **Rule:** Find out whether the allocation bills GPU-hours or core-hours before any arithmetic. It swings the usable
@@ -214,7 +219,7 @@ Items marked *documented, not seen* are site guidance the team followed without 
     inference batches to a measured token ceiling.
     **Seen:** OOM at 54 GB per GPU on a 27B model; `device_map` OOM past batch 16.
 60. **Rule:** When a submission goes wrong, cancel what is yours and redesign once.
-    **Seen:** two patches on a live queue, then "can we not just kill all and start again cleanly".
+    **Seen:** two patches on a live queue made it worse; the clean restart took one command.
 61. **Rule:** A run that died at the wall printed verdicts before it died. Read the log, not the exit code.
     **Seen:** exit 124 at a 90-minute wall already showed two failures at 52%; the two-hour rerun found the same two.
 

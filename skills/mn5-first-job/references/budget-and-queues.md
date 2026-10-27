@@ -5,7 +5,9 @@
 Ask what the allocation bills: GPU-hours or core-hours. On MareNostrum 5 ACC under EuroHPC allocations the team
 measured 20 cores billed per GPU, so **5,000 GPU-hours = 100,000 CPU-hours** in `bsc_acct`. Getting this wrong
 swings the usable budget by four. `sacct` core-hour sums double-count SMT threads; trust `bsc_acct`. Measured on a smoke job: `--cpus-per-task=4` showed
-`cpu=8,billing=8` in `sacct` (two hardware threads per core). Budget by `bsc_acct`, not by `AllocTRES`.
+`cpu=8,billing=8` in `sacct` (two hardware threads per core). Budget by `bsc_acct`, not by `AllocTRES`: on one full allocation `bsc_acct` reported 96.36 of 100 kCPU-h while the
+`sacct` thread sum was double that, and BSC's own statement of the award was 5,000 GPU-h = 100 kCPU-h at 20 cores
+per GPU. So 20 cores per GPU is the billed figure, not 40.
 
 ## Arithmetic
 
@@ -33,7 +35,7 @@ baseline before reading results; walls sized from measured progress with margin.
 
 ## Queues
 
-- Debug QoS: minutes to start, 2 h max, for smokes and image checks only.
+- Debug QoS: minutes to start, 2 h max, ONE job per user at a time (`MaxSubmitPU 1`), for smokes and image checks only.
 - Production QoS: 3-day max wall; shorter walls get better priority on a resume.
 - Whole-node (4 GPU) requests: can wait more than a day. 1-2 GPUs: minutes. Make the job GPU-count tolerant
   (constant effective batch) and take what is offered.

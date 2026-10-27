@@ -17,7 +17,7 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
 module load __CONTAINER_MODULE__
 RUN_DIR="__SCRATCH_DIR__/runs/${SLURM_JOB_NAME}-${SLURM_JOB_ID}"
 mkdir -p "${RUN_DIR}"; cd "${RUN_DIR}"
-export XDG_CACHE_HOME="${RUN_DIR}/cache"       # every cache explicit and off $HOME; inside the container defaults resolve elsewhere
+export XDG_CACHE_HOME="__SCRATCH_DIR__/cache/${SLURM_JOB_NAME}"   # caches: explicit, off $HOME, and OUTSIDE the run dir so they are never copied to results
 export HF_HOME="${XDG_CACHE_HOME}/hf" HF_HUB_CACHE="${XDG_CACHE_HOME}/hf/hub" TRITON_CACHE_DIR="${XDG_CACHE_HOME}/triton"
 export HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1    # no internet on the node: a hub client that tries to phone home hangs, then fails
 mkdir -p "${XDG_CACHE_HOME}"

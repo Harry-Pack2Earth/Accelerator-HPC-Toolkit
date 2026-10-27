@@ -6,18 +6,20 @@
 # every other script reads. Nothing is hardcoded about your allocation.
 #
 # Usage:
-#   scripts/preflight.sh --user <cluster username> [--login glogin1.bsc.es] [--transfer transfer1.bsc.es] [--out cluster.env] [--dry-run]
+#   scripts/preflight.sh --user <cluster username> [--project <code>] [--login glogin1.bsc.es] [--transfer transfer1.bsc.es] [--out cluster.env] [--dry-run]
+#   --project is required when the account has more than one allocation (the script stops and lists them).
 #
 # Exit codes: 0 ok, 2 laptop-side problem (fix and re-run), 3 cluster-side problem.
 set -uo pipefail
 
-USER_NAME=""; LOGIN_HOST="glogin1.bsc.es"; TRANSFER_HOST="transfer1.bsc.es"; OUT="cluster.env"; DRY=0
+USER_NAME=""; LOGIN_HOST="glogin1.bsc.es"; TRANSFER_HOST="transfer1.bsc.es"; OUT="cluster.env"; DRY=0; PROJECT_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --user) USER_NAME="$2"; shift 2 ;;
     --login) LOGIN_HOST="$2"; shift 2 ;;
     --transfer) TRANSFER_HOST="$2"; shift 2 ;;
     --out) OUT="$2"; shift 2 ;;
+    --project) PROJECT_ARG="$2"; shift 2 ;;
     --dry-run) DRY=1; shift ;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -96,7 +98,9 @@ Key login refused. Fix on the laptop, then re-run preflight:
   1. Make a key if you have none:   ssh-keygen -t ed25519
   2. Upload ~/.ssh/id_ed25519.pub in the BSC accounts portal (SSH KEYS -> ADD NEW SSH KEY).
      The upload REPLACES the authorized_keys file on the cluster: include every key you still want.
-  3. Test by hand:  ssh -o BatchMode=yes <user>@<host> hostname
+  3. If the key HAS a passphrase, scripts cannot type it: run `ssh-add ~/.ssh/id_ed25519` once per login session
+     (the same "Permission denied" appears when the agent is not running).
+  4. Test by hand:  ssh -o BatchMode=yes <user>@<host> hostname
 MSG
       ;;
       net) echo "No login or transfer node answered (refused / timed out). From outside the EU connect to the BSC VPN first; otherwise wait and retry, or check https://www.bsc.es/supportkc for maintenance." >&2 ;;
@@ -121,7 +125,16 @@ if [[ $DRY -eq 1 ]]; then
   PROJECT="<project>"; QOS_DEBUG="<debug qos>"; QOS_PROD="<production qos>"; KIND="unknown"; QOS_MAX_WALL=""; PROJECTS_QUOTA_GB=""
 else
   # bsc_queues prints "SLURM ACCOUNT: <code>" and one line per QoS: "<name> [(D)] <max time> <max proc> <description>"
-  PROJECT="$(echo "$QUEUES_RAW" | grep -oE 'SLURM ACCOUNT: *[A-Za-z0-9_]+' | head -1 | awk '{print $NF}')"
+  ALL_PROJECTS="$(echo "$QUEUES_RAW" | grep -oE 'SLURM ACCOUNT: *[A-Za-z0-9_]+' | awk '{print $NF}' | sort -u | tr '\n' ' ')"
+  N_PROJECTS="$(echo "$ALL_PROJECTS" | wc -w | tr -d ' ')"
+  if [[ -n "$PROJECT_ARG" ]]; then
+    [[ " $ALL_PROJECTS " == *" $PROJECT_ARG "* ]] || { echo "ERROR: --project $PROJECT_ARG is not one of: $ALL_PROJECTS" >&2; exit 3; }
+    PROJECT="$PROJECT_ARG"
+  elif [[ "$N_PROJECTS" -gt 1 ]]; then
+    echo "This account has several allocations: ${ALL_PROJECTS}. Jobs bill the one you pick. Ask the human which, then re-run with --project <code>." >&2; exit 3
+  else
+    PROJECT="$(echo "$ALL_PROJECTS" | awk '{print $1}')"
+  fi
   [[ -n "$PROJECT" ]] || PROJECT="$(echo "$PROJECT_RAW" | grep -oE '\b[a-z]{2,6}[0-9]{2,4}\b' | head -1)"
   if echo "$QUEUES_RAW" | grep -qE '^\s*acc_'; then KIND="acc"; else KIND="gp"; fi
   QOS_DEBUG="$(echo "$QUEUES_RAW" | grep -oE "${KIND}_debug" | head -1)"
@@ -129,7 +142,7 @@ else
   [[ -n "$QOS_PROD" ]] || QOS_PROD="$(echo "$QUEUES_RAW" | grep -oE "^\s*${KIND}_[a-z]+" | tr -d ' ' | grep -v -E 'debug|interactive' | head -1)"
   QOS_MAX_WALL="$(echo "$QUEUES_RAW" | grep -E "^\s*${QOS_PROD}( +\(D\))? +[0-9]" | sed -E 's/\(D\)//' | awk '{print $2}' | head -1)"
   # gpfs_projects quota line: "gpfs_projects GRP <usage> <unit> <quota> <unit> <limit> <unit> ..."
-  PROJECTS_QUOTA_GB="$(echo "$QUOTA_RAW" | grep gpfs_projects | awk '{q=$5; u=$6; if (u=="MB") q=q/1024; if (u=="TB") q=q*1024; printf "%.1f", q}')"
+  PROJECTS_QUOTA_GB="$(echo "$QUOTA_RAW" | grep gpfs_projects | head -1 | awk '{q=$5; u=$6; if (u=="MB") q=q/1024; if (u=="TB") q=q*1024; printf "%.1f", q}')"
 fi
 if [[ -z "$PROJECT" ]]; then echo "Could not read a project code from bsc_project; paste the output above to the human." >&2; exit 3; fi
 echo "project=$PROJECT kind=$KIND qos_debug=${QOS_DEBUG:-?} qos_prod=${QOS_PROD:-?}"
@@ -139,11 +152,14 @@ if [[ "$KIND" == "acc" && "$LOGIN_HOST" == glogin* && $DRY -eq 0 ]]; then
   LOGIN_HOST="$FOUND_HOST"; echo "login=${LOGIN_HOST}"
 fi
 ACCT_RAW="$(run_remote "$LOGIN_HOST" bsc_acct)"; echo "bsc_acct:"; echo "$ACCT_RAW"
-QOS_LIMITS="$(run_remote "$LOGIN_HOST" "sacctmgr -n -P show qos '${QOS_PROD}' format=Name,MaxWall,MaxSubmitPU,MaxJobsPU 2>/dev/null" | grep -E '^[a-z]' | head -1)"
-echo "qos limits (Name|MaxWall|MaxSubmitPU|MaxJobsPU): ${QOS_LIMITS:-not readable}"
-QOS_MAX_SUBMIT="$(echo "$QOS_LIMITS" | cut -d'|' -f3)"
-[[ -n "$QOS_MAX_WALL" ]] || QOS_MAX_WALL="$(echo "$QOS_LIMITS" | cut -d'|' -f2)"
+QOS_LIMITS="$(run_remote "$LOGIN_HOST" "sacctmgr -n -P show qos '${QOS_PROD}','${QOS_DEBUG}' format=Name,MaxWall,MaxSubmitPU,MaxJobsPU 2>/dev/null" | grep -E '^[a-z]')"
+echo "qos limits (Name|MaxWall|MaxSubmitPU|MaxJobsPU):"; echo "${QOS_LIMITS:-not readable}"
+QOS_MAX_SUBMIT="$(echo "$QOS_LIMITS" | grep "^${QOS_PROD}|" | cut -d'|' -f3)"
+QOS_DEBUG_MAX_SUBMIT="$(echo "$QOS_LIMITS" | grep "^${QOS_DEBUG}|" | cut -d'|' -f3)"
+QOS_DEBUG_MAX_WALL="$(echo "$QOS_LIMITS" | grep "^${QOS_DEBUG}|" | cut -d'|' -f2)"
+[[ -n "$QOS_MAX_WALL" ]] || QOS_MAX_WALL="$(echo "$QOS_LIMITS" | grep "^${QOS_PROD}|" | cut -d'|' -f2)"
 echo "NOTE: MaxSubmitPU counts EVERY array task, pending or running. Size each submission against the whole queue."
+echo "NOTE: the debug QoS has its own, small cap (${QOS_DEBUG_MAX_SUBMIT:-?}): smoke with one task there; arrays go to ${QOS_PROD}."
 BIG_FILES_DIR="/gpfs/projects/${PROJECT}/${USER_NAME}/big"; RESULTS_DIR="/gpfs/projects/${PROJECT}/${USER_NAME}/results"
 if [[ -n "$PROJECTS_QUOTA_GB" ]] && awk "BEGIN{exit !($PROJECTS_QUOTA_GB < 20)}"; then
   BIG_FILES_DIR="/gpfs/scratch/${PROJECT}/${USER_NAME}/big"; RESULTS_DIR="/gpfs/scratch/${PROJECT}/${USER_NAME}/results"
@@ -165,6 +181,8 @@ QOS_DEBUG="${QOS_DEBUG}"
 QOS_PROD="${QOS_PROD}"
 QOS_MAX_WALL="${QOS_MAX_WALL}"
 QOS_MAX_SUBMIT="${QOS_MAX_SUBMIT}"
+QOS_DEBUG_MAX_WALL="${QOS_DEBUG_MAX_WALL}"
+QOS_DEBUG_MAX_SUBMIT="${QOS_DEBUG_MAX_SUBMIT}"
 REMOTE_ARCH="${REMOTE_ARCH}"
 LAPTOP_OS="${OS}"
 LAPTOP_ARCH="${ARCH}"

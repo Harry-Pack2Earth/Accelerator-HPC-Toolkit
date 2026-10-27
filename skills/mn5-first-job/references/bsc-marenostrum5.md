@@ -47,7 +47,7 @@ Commands: `bsc_project list`, `bsc_queues`, `bsc_quota`, `bsc_acct`, plus standa
 
 | QoS | Use | Limits (measured, Sep 2026) |
 |---|---|---|
-| `acc_debug` | smoke, image checks | max wall 2 h |
+| `acc_debug` | smoke, image checks | max wall 2 h; **MaxSubmitPU 1, MaxJobsPU 1** (one job per user at a time, so a 2-task array is rejected there) |
 | `acc_ehpc` | production on EuroHPC GPU allocations | max wall 3 days; `MaxSubmitPU` 366, counting every array task |
 | `acc_interactive` | interactive sessions | |
 | `gp_debug`, `gp_ehpc` | the CPU-partition equivalents | rejected on a GPU-only allocation |

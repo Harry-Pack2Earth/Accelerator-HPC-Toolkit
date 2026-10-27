@@ -1,6 +1,6 @@
 ---
 name: mn5-first-job
-description: Takes a new BSC MareNostrum 5 user from "I have an account" to a first job run, verified and pulled back, then to real GPU and CPU-array jobs. Use whenever the task mentions BSC, MareNostrum, MN5, the BSC AI Factory, EuroHPC, a supercomputer, HPC, SLURM, sbatch, a GPU allocation, Apptainer/Singularity on a cluster, or moving a training or data job from a laptop or cloud GPU to a cluster. Built from one startup's first two allocations; every rule here was paid for by a real failure.
+description: Takes a new BSC MareNostrum 5 user from "I have an account" to a first job run, verified and pulled back, then to real GPU and CPU-array jobs. Use whenever the task mentions BSC, MareNostrum, MN5, the BSC AI Factory, EuroHPC, a supercomputer, HPC, SLURM, sbatch, a GPU allocation, Apptainer/Singularity on a cluster, or moving a training or data job from a laptop or cloud GPU to a cluster. Built from one startup's first two allocations; the rules carry what actually happened, and the few taken from site guidance without an incident are marked as such.
 ---
 
 # mn5-first-job
@@ -9,6 +9,7 @@ You are operating a supercomputer on behalf of someone who may never have used o
 never used a terminal. You do the cluster work over SSH. They approve, read, and decide.
 The cluster is a shared public machine with a budget attached to this user's name: a mistake
 costs real allocation hours and other people's queue time. Follow the procedure in order. Do not skip steps.
+The scripts run on stock macOS `/bin/bash` 3.2, Linux bash and WSL2.
 
 ## The mental model (read once)
 
@@ -50,7 +51,8 @@ and the directories every script and template uses (`PROJECTS_DIR`, `SCRATCH_DIR
 images, wheels, venv and results go under scratch, and preflight says so: pull results promptly. Read its NOTE lines to the human. If login fails, the
 human must create a key and upload it in the BSC accounts portal; the upload REPLACES the
 authorized_keys file, so every key still wanted goes in the same upload. If the allocation shows
-only `acc_*` queues it is GPU-only: re-run with `--login alogin1.bsc.es`.
+only `acc_*` queues it is GPU-only; preflight switches itself to an ACC login node and records it. If the account
+has several allocations it stops and asks which one (`--project`).
 
 ### Step 1. Smoke (prove the loop before any real software)
 
@@ -80,11 +82,24 @@ If it is not verified, read the `.err` log before changing anything.
 Nothing installs on the cluster: no internet, no root. Code inside an image is frozen until the
 image is rebuilt and re-pushed, and a stale image runs old code with no error.
 
+Working folder for doors 2 and 3 (the build scripts run from it): `requirements.txt` (copy
+`templates/requirements.example.txt`), `src/` with your code, and for door 3 a copy of `templates/container.def`
+plus `templates/Dockerfile`. On macOS keep it under your home folder.
+
 ### Step 3. The real job
 
-Render a template (`scripts/render.sh`), push, validate with `scripts/submit.sh <dir> <file>`
-(runs `sbatch --test-only` and the submission-cap check), show the human the cost
-(`scripts/estimate_cost.sh`) against the budget in `scripts/status.sh`, and only then `--go`.
+Render a template (`scripts/render.sh <template> <out> KEY=VALUE ...`), push, validate with
+`scripts/submit.sh <dir> <file>` (runs `sbatch --test-only` and the submission-cap check of the QoS in the
+file), show the human the cost (`scripts/estimate_cost.sh`) against the budget in `scripts/status.sh`, and only
+then `--go`. Values from `cluster.env` fill in by themselves; the rest you pass:
+
+| Template | KEY=VALUE you must pass |
+|---|---|
+| `smoke.sbatch` | none (`run_smoke.sh` does it) |
+| `image_smoke.sbatch` | `CPUS` (= CORES_PER_GPU), `SIF` (absolute path on the cluster) |
+| `single_gpu.sbatch` | `JOB_NAME`, `QOS` (`QOS_DEBUG` to test, `QOS_PROD` to run), `CPUS`, `WALLTIME` (HH:MM:SS), `SIF`, `ENTRYPOINT` (absolute, e.g. `/opt/app/src/train.py`), `ARGS` (may be empty) |
+| `multi_gpu_torchrun.sbatch` | the above plus `GPUS` (2-4), `RUN_ID` (one per training run, reused on resubmits), `CKPT_ARGS` (how your script takes a checkpoint dir and resume flag, or empty) |
+| `cpu_array.sbatch` | `JOB_NAME`, `QOS`, `CPUS` (per task), `WALLTIME`, `LAST` (last task index), `CONCURRENT`, `MANIFEST` (absolute), `ENTRYPOINT` (absolute), `ARGS` |
 
 - `templates/single_gpu.sbatch`: one GPU, one container, one entry point.
 - `templates/multi_gpu_torchrun.sbatch`: 2 to 4 GPUs on ONE node, requeue + resume from checkpoint.
@@ -104,7 +119,8 @@ TIMEOUT means resubmit the same job with a wall sized from the measured progress
 - Never delete on GPFS without listing first, and never `rm -rf` a path you did not create this session.
   `sync_push.sh --mirror` lists what it would delete and stops; show the human, then add `--confirm-delete`.
 - Never `scancel -u <user>` on your own initiative; ask. Cancelling and resubmitting doubles the spend.
-- Never run anything heavier than `ls`, `cat`, `squeue` on a login node, and never from `/gpfs/home`.
+- Never run anything heavier than `ls`, `cat`, `squeue` on a login node, and never from `/gpfs/home`. The one
+  exception is the venv build by `install_wheels.sh` (a pip install of pre-built wheels: seconds, no network).
 - Never change an sbatch file, image, wheel bundle or dataset that a queued or running job reads.
 - Never pass lists through `sbatch --export` (it splits on commas); render values into the file.
 - Never leave a job with no checkpoint on a wall longer than two hours.
@@ -121,12 +137,18 @@ The full list with what actually happened is `references/lessons.md`. The ones t
 2. `#!/bin/bash -l` on every batch script, or `module` is undefined.
 3. Pass `--cpus-per-task` to `srun` explicitly; it does not inherit from `#SBATCH` here.
 4. The per-user submission cap counts every array task; one rejected send aborts the whole chain.
-5. A whole 4-GPU node can queue for a day; two GPUs are free in minutes. Make jobs GPU-count tolerant.
+5. A whole 4-GPU node can queue for a day; two GPUs are free in minutes. Make jobs GPU-count tolerant, then
+   resubmit with fewer GPUs when a whole node will not start (SLURM never grants fewer than asked).
 6. The project quota can be tiny on a new allocation. Check `bsc_quota` before the first push.
 7. Verify an image's sha on the remote side; a 13 GB image once arrived as a 172 MB stub.
 8. Keep every cache off `$HOME` and set each one explicitly; container defaults resolve elsewhere.
 9. One directory per job and per task. Shared paths race on GPFS; `flock` does not help across nodes.
 10. The H100s on this system have 64 GB, not 80.
+
+## Verification status
+
+What has been run on which machine lives in one place: `TESTING.md` at the repository root. Nothing else in this
+skill states a verification status; if a sentence here and that table disagree, the table wins.
 
 ## Files
 
