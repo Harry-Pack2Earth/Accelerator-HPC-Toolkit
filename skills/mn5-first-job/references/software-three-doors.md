@@ -61,6 +61,6 @@ Apple-Silicon specifics the team hit:
 - Some CUDA extensions (ones compiled at install time) cannot be built on a Mac at all; use a base image that ships
   them, or build on a Linux GPU machine.
 
-Windows notes (exercised on a Windows Server 2022 machine with WSL2, Oct 2026): do everything in the WSL2 Ubuntu terminal,
+Windows notes: do everything in the WSL2 Ubuntu terminal,
 including `ssh` and `rsync`; stock Windows has no rsync. Keep the working folder on the Linux side of WSL2
 (`~/...`), not under `/mnt/c`, for speed and file permissions.

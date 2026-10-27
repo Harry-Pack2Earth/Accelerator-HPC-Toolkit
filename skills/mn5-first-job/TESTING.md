@@ -23,4 +23,4 @@ machine and the artifact checked, not when it "should work".
 | `build_sif.sh --mode native` in WSL2 + push `--verify` + `image_smoke.sbatch` | same | verified | 2026-10-27 | `--fakeroot` fails (binfmt_misc already mounted by WSL interop), sudo fallback built the 13 GB image in 9 min 17 s; VERIFY_OK (sha c47fe66e…); job 48133027 `IMAGE_OK x86_64 torch 2.6.0 cu12.8 NVIDIA H100 65247 MiB` |
 | cold run: a fresh agent with ONLY the skill folder (no repo, no session context), told "use the skill, my username is X", stock `/bin/bash` 3.2 | macOS 27, tree 9e33f70 | verified | 2026-10-27 | preflight → run_smoke → SMOKE_VERIFIED (job 48134908) with no human input; its 16 usability findings were folded into SKILL.md and the scripts afterwards (see git history) |
 
-Unverified site facts are listed at the end of `skills/mn5-first-job/references/lessons.md`.
+Unverified site facts are listed at the end of `references/lessons.md`.

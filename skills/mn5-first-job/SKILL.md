@@ -82,8 +82,8 @@ user), wait for it with `status.sh` and retry; never cancel it to make room.
 
 Show the human the JSON and say what it means: the hostname is a compute node; `python` is the node's own
 system Python (3.9), not the one your jobs will use (jobs use `PYTHON_MODULE` through a venv, or an image);
-`machine` must be `x86_64`; `cpus_allocated_to_this_job` is yours (4), `cpu_count_node` is the whole shared
-node; `nvidia_smi` says "No devices found" because the smoke requested no GPU, which is expected even on a
+`machine` must be `x86_64`; `cpus_allocated_to_this_job` is yours (4 cores, which reads as 8 because the node
+exposes two hardware threads per core), `cpu_count_node` is the whole shared node; `nvidia_smi` says "No devices found" because the smoke requested no GPU, which is expected even on a
 GPU node. The verdict comes from the artifact, never from an exit code. If it is not verified, read the
 `.err` log before changing anything.
 

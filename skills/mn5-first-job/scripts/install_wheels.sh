@@ -4,7 +4,7 @@
 # Reads cluster.env: WHEELS_DIR, VENV_DIR, PYTHON_MODULE. Each bundle goes to WHEELS_DIR/<hash>/ and gets its own venv
 # at VENV_DIR/<hash>/; VENV_DIR/current then points at it. Jobs are rendered with the hash pinned (render.sh reads
 # ./.venv_hash), so a queued or running array never switches venv when a new bundle is installed. Runs install_wheels_remote.sh ONCE on the login node (never inside jobs:
-# flock does not serialise across nodes on GPFS). Jobs test VENV_DIR/current/.ready.
+# flock does not serialise across nodes on GPFS). render.sh pins the hash into the job (VENV_HASH), which tests VENV_DIR/<hash>/.ready.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 source "$HERE/_env.sh"

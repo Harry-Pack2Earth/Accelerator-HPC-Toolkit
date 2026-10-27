@@ -7,7 +7,7 @@
 #   docker      macOS, or any machine with Docker but no apptainer: Docker builds the image from the Dockerfile next
 #               to the .def (same content), forced to linux/amd64, then apptainer (in a container) converts it to .sif
 #               straight from the Docker daemon. Nothing runs inside apptainer, so no privileged nesting and no
-#               %post under emulation. Status: see TESTING.md in the repository root.
+#               %post under emulation. Status: see TESTING.md in this skill folder.
 #   docker-def  the older recipe: apptainer itself inside a privileged amd64 container, building from the .def. It
 #               built every image of the authors on macOS 26 (July to Sept 2026) and stopped working on the same
 #               machine on macOS 27 / current colima ("Failed to spawn stage 1", even for a native arm64 def). Kept

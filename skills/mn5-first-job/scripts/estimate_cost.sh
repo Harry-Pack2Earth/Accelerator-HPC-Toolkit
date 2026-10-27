@@ -37,7 +37,10 @@ else:
 if total_kh and used_kh:
     rem_cpu = (float(total_kh) - float(used_kh)) * 1000
     job_cpu = gpu_h * cpg if gpus > 0 else cpu_h
-    print(f"remaining at the last accounting stamp: {rem_cpu:,.0f} CPU-hours = {rem_cpu / cpg:,.0f} GPU-hours; this job = {100 * job_cpu / rem_cpu:.1f}% of it (bsc_acct lags by hours; re-run preflight to refresh)")
+    if rem_cpu > 0:
+        print(f"remaining at the last accounting stamp: {rem_cpu:,.0f} CPU-hours = {rem_cpu / cpg:,.0f} GPU-hours; this job = {100 * job_cpu / rem_cpu:.1f}% of it (bsc_acct lags by hours; re-run preflight to refresh)")
+    else:
+        print(f"WARNING: the allocation reads as fully used ({used_kh} of {total_kh} khours at the last accounting stamp). Ask the human before submitting anything.")
 else:
     print("Compare with the remaining budget in `bsc_acct` (scripts/status.sh) before submitting.")
 PY
