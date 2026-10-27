@@ -93,7 +93,9 @@ plus `templates/Dockerfile`. On macOS keep it under your home folder.
 Render a template (`scripts/render.sh <template> <out> KEY=VALUE ...`), push, validate with
 `scripts/submit.sh <dir> <file>` (runs `sbatch --test-only` and the submission-cap check of the QoS in the
 file), show the human the cost (`scripts/estimate_cost.sh`) against the budget in `scripts/status.sh`, and only
-then `--go`. Values from `cluster.env` fill in by themselves; the rest you pass:
+then `--go`. The `sbatch --test-only` line in that output states the estimated start time: if it is hours or a
+day away, tell the human before submitting (fewer GPUs, a shorter wall or the debug queue for a test may start
+in minutes). Values from `cluster.env` fill in by themselves; the rest you pass:
 
 | Template | KEY=VALUE you must pass |
 |---|---|
