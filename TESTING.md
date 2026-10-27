@@ -19,7 +19,7 @@ machine and the artifact checked, not when it "should work".
 | `preflight.sh` + `run_smoke.sh` | Ubuntu 24.04 x86_64 (EC2 t3.large), agent-forwarded key | verified | 2026-10-27 | job 48129580 COMPLETED, SMOKE_VERIFIED |
 | `build_sif.sh --mode native` + push `--verify` + `image_smoke.sbatch` | Ubuntu 24.04 x86_64 VM (t3.large) | verified | 2026-10-27 | apptainer 1.5.5 (.deb; no apt package on 24.04); 13.1 GB image; push 6 min 20 s, VERIFY_OK; job 48132883 `IMAGE_OK x86_64 torch 2.6.0 cu12.8 NVIDIA H100 65247 MiB`; fixed on the way: verify manifest paths, stale job id, SIGPIPE in the template, newest module version |
 | `preflight.sh` + `run_smoke.sh` in WSL2 | Windows Server 2022 (m5zn.metal) + WSL2 Ubuntu 24.04, normal user | verified | 2026-10-27 | job 48130637 SMOKE_VERIFIED; preflight switched itself to alogin1 |
-| `build_sif.sh --mode native` in WSL2 + push + image smoke | same | running | 2026-10-27 | `--fakeroot` fails (binfmt_misc already mounted by WSL interop), sudo fallback built the 13 GB image in 9 min 17 s; push + H100 smoke in progress |
+| `build_sif.sh --mode native` in WSL2 + push `--verify` + `image_smoke.sbatch` | same | verified | 2026-10-27 | `--fakeroot` fails (binfmt_misc already mounted by WSL interop), sudo fallback built the 13 GB image in 9 min 17 s; VERIFY_OK (sha c47fe66e…); job 48133027 `IMAGE_OK x86_64 torch 2.6.0 cu12.8 NVIDIA H100 65247 MiB` |
 | cold run by a person who has never used MN5, with an agent | fresh user account | pending | | |
 
 Unverified site facts are listed at the end of `skills/mn5-first-job/references/lessons.md`.
