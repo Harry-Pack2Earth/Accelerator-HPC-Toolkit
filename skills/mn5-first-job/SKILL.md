@@ -46,6 +46,21 @@ before Step 2, or as soon as the human is available.
 4. For a real job: the script, its inputs and their size, the packages it needs, and how long one run takes on
    the laptop (that sets the wall time and the task count).
 
+## Three things only the human can do; guide them through each
+
+1. **The SSH key upload** (BSC accounts portal, a website login). If preflight reports `KEY_REFUSED`: check for
+   `~/.ssh/id_ed25519.pub`; if absent, run `ssh-keygen -t ed25519` for them (empty passphrase is acceptable for a
+   founder's laptop; say so); print the public key; give the portal path (https://hpcaccounts.bsc.es → SSH KEYS →
+   ADD NEW SSH KEY) and the warning that the upload replaces the file; ask them to say "done"; re-run preflight.
+   If still refused: passphrase without agent (`ssh-add`), wrong username, or the upload has not propagated yet
+   (wait a minute).
+2. **WSL2 on Windows** (administrator PowerShell and a reboot). If you are on plain Windows (no `bash`, no `rsync`):
+   stop; give them `wsl --install` in an administrator PowerShell, the reboot, opening "Ubuntu" from the Start
+   menu, `sudo apt-get install -y rsync python3-pip`, and installing the agent inside that Ubuntu; continue from
+   there.
+3. **The yes before anything real is submitted.** Show the job file, the cost, the share of the remaining budget
+   and the estimated start, then wait. The smoke (Step 1) is the one job that needs no yes.
+
 ## Procedure
 
 All scripts run from one working folder on the laptop that holds `cluster.env`. Paths below are

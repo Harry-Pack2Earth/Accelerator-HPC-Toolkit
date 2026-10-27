@@ -17,9 +17,19 @@ Open Claude Code in an empty folder and paste:
 > Install the skill from https://github.com/Harry-Pack2Earth/Accelerator-HPC-Toolkit and get my first job
 > running on MareNostrum 5. My cluster username is `abc123456`.
 
-It will do everything below except the two things only you can do: upload your SSH key in the BSC portal
-(if you have not, it stops and tells you exactly how) and say yes before anything real is submitted. The
-first tiny test job goes on its own: it costs under half a CPU-hour and proves the whole path.
+Tested on 27 October 2026 exactly like that: a fresh agent in an empty folder, that sentence and nothing else,
+had a verified first job back on the laptop in about four minutes (job 48142286; details in
+`skills/mn5-first-job/TESTING.md`).
+
+### The three things only you can do (the agent guides you through each)
+
+| You | The agent |
+|---|---|
+| **Upload your SSH key** in the BSC portal, once. A website login; no script can do it. | Generates the key if you have none, prints the public key to copy, gives the portal path step by step, waits for your "done", then re-tests the login. If the test still fails it tells you which of the three causes it is. |
+| **Install WSL2 on Windows**, once. Needs an administrator PowerShell and a reboot. | Detects plain Windows, gives the one command, says what to expect after the reboot, and how to open Ubuntu and start the agent inside it. |
+| **Say yes before anything real is submitted.** It is your budget. | Shows the job file, the cost, the share of your remaining allocation and the queue's estimated start, then waits. The first tiny test job is the one exception: it goes on its own (under half a CPU-hour) and proves the path. |
+
+Everything else, the agent does.
 
 **If you are the agent reading this:** the folder you were opened in is the working folder. `git clone` this
 repository into it; `mkdir -p ~/.claude/skills && cp -r Accelerator-HPC-Toolkit/skills/mn5-first-job ~/.claude/skills/`
