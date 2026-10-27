@@ -19,6 +19,16 @@ Items marked *documented, not seen* are site guidance the team followed without 
 4. **Rule:** When a human pastes for you: one fenced block, commands only, `cd` first. Explanation above the block.
    **Seen:** a final submit placed after a prose line was never pasted; the final never ran; everything was cancelled.
 
+4b. **Rule:** `BatchMode=yes` refuses a host key it has never seen; a fresh laptop knows none. Use
+    `StrictHostKeyChecking=accept-new` (accept unknown, still refuse changed).
+    **Seen (27 Oct 2026):** two never-contacted hosts answered "Host key verification failed", which reads like a key
+    problem and is not.
+4c. **Rule:** Login nodes go down one at a time. Try the next number of the same family before blaming the network.
+    **Seen (27 Oct 2026):** glogin1 "Connection refused", glogin3 timed out, glogin2 and all alogin/transfer nodes fine.
+4d. **Rule:** The remote login shell prints module banners on stderr for every non-interactive command. Capture stdout
+    only, strip ANSI colours and terminal hyperlinks before parsing BSC command output.
+    **Seen (27 Oct 2026):** the project code sat inside a colour escape sequence; a word-boundary regex missed it.
+
 ## Transfer
 
 5. **Rule:** Know which rsync you have. macOS ships openrsync (or rsync 2.6.9 on older systems).
@@ -31,9 +41,11 @@ Items marked *documented, not seen* are site guidance the team followed without 
    **Seen:** a re-push silently repointed later runs; two result sets were compared as one experiment.
 9. **Rule:** Never pull large re-derivable artifacts into timestamped pull directories.
    **Seen:** 25 copies of a 50 GB merged model = 872 GB on the laptop; a backup watcher then mirrored 951 GB to cloud storage.
-10. **Rule:** rsync exit 23 for a missing optional source is normal. Handle it narrowly; remove empty staging dirs.
+10. **Rule:** rsync exit 23 for a missing optional source or a refused attribute is normal. Handle it narrowly; remove
+    empty staging dirs; pull with `-rlt`, not `-a`.
     **Seen:** under `set -e` a missing optional directory aborted the pull after results had already transferred, and
-    the empty staging directory then "won" as the newest pull.
+    the empty staging directory then "won" as the newest pull. Again on 27 Oct 2026: the toolkit's own first live pull
+    exited 23 on a `chmod` of the destination folder after both files had arrived.
 11. **Rule:** Logs written to the submit directory (relative `-o`) are not in your logs folder. Pull them explicitly.
     **Seen:** four failed tasks could only be diagnosed from state codes because the logs sat unreachable on the cluster.
 12. **Rule:** Pull study and state databases with results; they size the next round's wall time.

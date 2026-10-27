@@ -36,7 +36,7 @@ The cluster is x86_64. The image must be `linux/amd64`. That is the whole cross-
 
 | Laptop | Path | Verified by the team |
 |---|---|---|
-| Linux x86_64 with Apptainer | `scripts/build_sif.sh --mode native` (`--fakeroot`; or `sudo`) | no (offered in scripts; the team never used a Linux box) |
+| Linux x86_64 with Apptainer | `scripts/build_sif.sh --mode native` (`--fakeroot`; or `sudo`) | in progress (Ubuntu 24.04 VM, Oct 2026): no `apptainer` apt package on 24.04; install the `.deb` from https://github.com/apptainer/apptainer/releases (1.5.5 worked) |
 | macOS, Apple Silicon | Docker Desktop or colima **with Rosetta enabled**, then `scripts/build_sif.sh --mode docker` (apptainer inside a privileged amd64 container) | **yes**, every production image, July to October 2026 |
 | macOS, Intel | same docker mode, no emulation | no (same code path, native amd64) |
 | Windows x86_64 | Ubuntu under WSL2, install Apptainer there, native mode; or Docker Desktop with the WSL2 backend, docker mode | no |

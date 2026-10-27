@@ -29,7 +29,28 @@ say() { printf '\n== %s ==\n' "$*"; }
 run_remote() {  # run_remote <host> <command...>
   local host="$1"; shift
   if [[ $DRY -eq 1 ]]; then echo "[dry-run] ssh ${USER_NAME}@${host} -- $*" >&2; echo "dry-run"; return 0; fi
-  ssh -o BatchMode=yes -o ConnectTimeout=15 "${USER_NAME}@${host}" "$@" 2>&1
+  # stdout only: the remote login shell prints module banners on stderr for every command. ANSI colours and
+  # terminal hyperlinks are stripped so the output can be parsed.
+  ssh "${SSH_OPTS[@]}" "${USER_NAME}@${host}" "$@" 2>>preflight.stderr.log | strip_ansi
+}
+ESC="$(printf '\033')"
+strip_ansi() { sed -E "s/${ESC}\[[0-9;]*[A-Za-z]//g; s/${ESC}\]8;;[^${ESC}]*${ESC}\\\\//g"; }
+SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=12)
+# try_hosts <base>: base like glogin1.bsc.es; tries glogin1..4, prints the first that answers, else returns 1.
+# Login nodes do go down (one refused connections and another timed out on the same morning the rest answered).
+try_hosts() {
+  local base="$1" prefix num domain i host out
+  prefix="${base%%[0-9]*}"; num="${base#"$prefix"}"; num="${num%%.*}"; domain="${base#*.}"
+  for i in "$num" 1 2 3 4; do
+    host="${prefix}${i}.${domain}"; [[ " $TRIED " == *" $host "* ]] && continue; TRIED="$TRIED $host"
+    if out="$(ssh "${SSH_OPTS[@]}" "${USER_NAME}@${host}" hostname 2>&1)"; then echo "$host"; return 0; fi
+    case "$out" in
+      *"Permission denied"*) echo "KEY_REFUSED ${host}: ${out}" >&2; LAST_ERR=key ;;
+      *"Host key verification failed"*|*"REMOTE HOST IDENTIFICATION HAS CHANGED"*) echo "HOST_KEY_CHANGED ${host}: the key in ~/.ssh/known_hosts differs from the server's; a human must check with BSC before removing the line" >&2; LAST_ERR=hostkey ;;
+      *) echo "UNREACHABLE ${host}: ${out}" >&2; LAST_ERR=net ;;
+    esac
+  done
+  return 1
 }
 
 say "1. laptop tools"
@@ -53,23 +74,33 @@ if [[ "$ARCH" != "x86_64" ]]; then
 fi
 
 say "2. key-based login (no password prompts, so scripts can run unattended)"
-for host in "$LOGIN_HOST" "$TRANSFER_HOST"; do
-  if [[ $DRY -eq 1 ]]; then echo "[dry-run] ssh -o BatchMode=yes ${USER_NAME}@${host} hostname"; continue; fi
-  if out="$(ssh -o BatchMode=yes -o ConnectTimeout=15 "${USER_NAME}@${host}" hostname 2>&1)"; then
-    echo "LOGIN_OK ${host} -> ${out}"
-  else
-    echo "LOGIN_FAILED ${host}: ${out}" >&2
-    cat >&2 <<'MSG'
-Key login failed. Fix on the laptop, then re-run preflight:
+TRIED=""; LAST_ERR=""
+if [[ $DRY -eq 1 ]]; then
+  echo "[dry-run] ssh -o BatchMode=yes ${USER_NAME}@${LOGIN_HOST} hostname"; echo "[dry-run] ssh -o BatchMode=yes ${USER_NAME}@${TRANSFER_HOST} hostname"
+else
+  if ! LOGIN_HOST="$(try_hosts "$LOGIN_HOST")"; then
+    # the other login family: GPU-only allocations live on alogin*, CPU ones on glogin*
+    case "$LOGIN_HOST" in glogin*) ALT="alogin1.${LOGIN_HOST#*.}" ;; *) ALT="glogin1.${LOGIN_HOST#*.}" ;; esac
+    LOGIN_HOST="$(try_hosts "$ALT")" || true
+  fi
+  TRANSFER_HOST="$(try_hosts "$TRANSFER_HOST")" || true
+  if [[ -z "$LOGIN_HOST" || -z "$TRANSFER_HOST" ]]; then
+    case "$LAST_ERR" in
+      key) cat >&2 <<'MSG'
+Key login refused. Fix on the laptop, then re-run preflight:
   1. Make a key if you have none:   ssh-keygen -t ed25519
   2. Upload ~/.ssh/id_ed25519.pub in the BSC accounts portal (SSH KEYS -> ADD NEW SSH KEY).
      The upload REPLACES the authorized_keys file on the cluster: include every key you still want.
-  3. If the host is unreachable at all (timeout), connect to the BSC VPN first.
-  4. Test by hand:  ssh -o BatchMode=yes <user>@<host> hostname
+  3. Test by hand:  ssh -o BatchMode=yes <user>@<host> hostname
 MSG
+      ;;
+      net) echo "No login or transfer node answered (refused / timed out). From outside the EU connect to the BSC VPN first; otherwise wait and retry, or check https://www.bsc.es/supportkc for maintenance." >&2 ;;
+      *) echo "See the messages above." >&2 ;;
+    esac
     exit 2
   fi
-done
+  echo "LOGIN_OK login=${LOGIN_HOST} transfer=${TRANSFER_HOST}"
+fi
 
 say "3. cluster discovery"
 PROJECT_RAW="$(run_remote "$LOGIN_HOST" bsc_project list)"; echo "bsc_project list:"; echo "$PROJECT_RAW"
@@ -82,24 +113,38 @@ echo "python modules: ${PY_MODULES:-none seen}"
 echo "container modules: ${SING_MODULES:-none seen}"
 
 if [[ $DRY -eq 1 ]]; then
-  PROJECT="<project>"; QOS_DEBUG="<debug qos>"; QOS_PROD="<production qos>"; KIND="unknown"
+  PROJECT="<project>"; QOS_DEBUG="<debug qos>"; QOS_PROD="<production qos>"; KIND="unknown"; QOS_MAX_WALL=""; PROJECTS_QUOTA_GB=""
 else
-  PROJECT="$(echo "$PROJECT_RAW" | grep -oE '\b(ehpc|bsc|ucm|upc|ub|uab)[a-z]*[0-9]+\b' | head -1)"
-  if echo "$QUEUES_RAW" | grep -q 'acc_'; then KIND="acc"; else KIND="gp"; fi
+  # bsc_queues prints "SLURM ACCOUNT: <code>" and one line per QoS: "<name> [(D)] <max time> <max proc> <description>"
+  PROJECT="$(echo "$QUEUES_RAW" | grep -oE 'SLURM ACCOUNT: *[A-Za-z0-9_]+' | head -1 | awk '{print $NF}')"
+  [[ -n "$PROJECT" ]] || PROJECT="$(echo "$PROJECT_RAW" | grep -oE '\b[a-z]{2,6}[0-9]{2,4}\b' | head -1)"
+  if echo "$QUEUES_RAW" | grep -qE '^\s*acc_'; then KIND="acc"; else KIND="gp"; fi
   QOS_DEBUG="$(echo "$QUEUES_RAW" | grep -oE "${KIND}_debug" | head -1)"
-  QOS_PROD="$(echo "$QUEUES_RAW"  | grep -oE "${KIND}_[a-z]+" | grep -v -E 'debug|interactive' | head -1)"
+  QOS_PROD="$(echo "$QUEUES_RAW" | grep -E "^\s*${KIND}_[a-z]+ +\(D\)" | awk '{print $1}' | head -1)"
+  [[ -n "$QOS_PROD" ]] || QOS_PROD="$(echo "$QUEUES_RAW" | grep -oE "^\s*${KIND}_[a-z]+" | tr -d ' ' | grep -v -E 'debug|interactive' | head -1)"
+  QOS_MAX_WALL="$(echo "$QUEUES_RAW" | grep -E "^\s*${QOS_PROD}( +\(D\))? +[0-9]" | sed -E 's/\(D\)//' | awk '{print $2}' | head -1)"
+  # gpfs_projects quota line: "gpfs_projects GRP <usage> <unit> <quota> <unit> <limit> <unit> ..."
+  PROJECTS_QUOTA_GB="$(echo "$QUOTA_RAW" | grep gpfs_projects | awk '{q=$5; u=$6; if (u=="MB") q=q/1024; if (u=="TB") q=q*1024; printf "%.1f", q}')"
 fi
 if [[ -z "$PROJECT" ]]; then echo "Could not read a project code from bsc_project; paste the output above to the human." >&2; exit 3; fi
 echo "project=$PROJECT kind=$KIND qos_debug=${QOS_DEBUG:-?} qos_prod=${QOS_PROD:-?}"
-if [[ "$KIND" == "acc" && "$LOGIN_HOST" == glogin* ]]; then
-  echo "NOTE: this allocation is GPU-only (acc_* queues). GPU jobs must be submitted from an ACC login node (alogin1.bsc.es); re-run with --login alogin1.bsc.es."
+if [[ "$KIND" == "acc" && "$LOGIN_HOST" == glogin* && $DRY -eq 0 ]]; then
+  echo "NOTE: this allocation is GPU-only (acc_* queues); jobs must be submitted from an ACC login node. Switching."
+  LOGIN_HOST="$(try_hosts "alogin1.${LOGIN_HOST#*.}")" || { echo "no ACC login node answered" >&2; exit 3; }
+  echo "login=${LOGIN_HOST}"
 fi
 ACCT_RAW="$(run_remote "$LOGIN_HOST" bsc_acct)"; echo "bsc_acct:"; echo "$ACCT_RAW"
-QOS_LIMITS="$(run_remote "$LOGIN_HOST" "sacctmgr -n -P show qos '${QOS_PROD}' format=Name,MaxWall,MaxSubmitPU,MaxJobsPU 2>/dev/null")"
+QOS_LIMITS="$(run_remote "$LOGIN_HOST" "sacctmgr -n -P show qos '${QOS_PROD}' format=Name,MaxWall,MaxSubmitPU,MaxJobsPU 2>/dev/null" | grep -E '^[a-z]' | head -1)"
 echo "qos limits (Name|MaxWall|MaxSubmitPU|MaxJobsPU): ${QOS_LIMITS:-not readable}"
-QOS_MAX_WALL="$(echo "$QOS_LIMITS" | cut -d'|' -f2)"; QOS_MAX_SUBMIT="$(echo "$QOS_LIMITS" | cut -d'|' -f3)"
+QOS_MAX_SUBMIT="$(echo "$QOS_LIMITS" | cut -d'|' -f3)"
+[[ -n "$QOS_MAX_WALL" ]] || QOS_MAX_WALL="$(echo "$QOS_LIMITS" | cut -d'|' -f2)"
 echo "NOTE: MaxSubmitPU counts EVERY array task, pending or running. Size each submission against the whole queue."
-echo "NOTE: if gpfs_projects quota above is tiny (one allocation had 512 MB), keep the working tree on scratch and ask support to raise it."
+BIG_FILES_DIR="/gpfs/projects/${PROJECT}/${USER_NAME}/big"
+if [[ -n "$PROJECTS_QUOTA_GB" ]] && awk "BEGIN{exit !($PROJECTS_QUOTA_GB < 20)}"; then
+  BIG_FILES_DIR="/gpfs/scratch/${PROJECT}/${USER_NAME}/big"
+  echo "NOTE: gpfs_projects quota is only ${PROJECTS_QUOTA_GB} GB. Images, datasets and venvs go to ${BIG_FILES_DIR} (scratch: not backed up)."
+  echo "      Ask BSC support to raise the projects quota; until then keep results small and pull them promptly."
+fi
 
 say "4. writing $OUT"
 cat > "$OUT" <<ENV
@@ -118,6 +163,8 @@ LAPTOP_OS="${OS}"
 LAPTOP_ARCH="${ARCH}"
 PROJECTS_DIR="/gpfs/projects/${PROJECT}/${USER_NAME}"
 SCRATCH_DIR="/gpfs/scratch/${PROJECT}/${USER_NAME}"
+BIG_FILES_DIR="${BIG_FILES_DIR}"
+PROJECTS_QUOTA_GB="${PROJECTS_QUOTA_GB}"
 PYTHON_MODULES="${PY_MODULES}"
 CONTAINER_MODULES="${SING_MODULES}"
 # cores billed per GPU on the accelerated partition (check against bsc_acct after your first GPU job)

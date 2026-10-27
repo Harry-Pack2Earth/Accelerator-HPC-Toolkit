@@ -4,7 +4,8 @@
 
 Ask what the allocation bills: GPU-hours or core-hours. On MareNostrum 5 ACC under EuroHPC allocations the team
 measured 20 cores billed per GPU, so **5,000 GPU-hours = 100,000 CPU-hours** in `bsc_acct`. Getting this wrong
-swings the usable budget by four. `sacct` core-hour sums double-count SMT threads; trust `bsc_acct`.
+swings the usable budget by four. `sacct` core-hour sums double-count SMT threads; trust `bsc_acct`. Measured on a smoke job: `--cpus-per-task=4` showed
+`cpu=8,billing=8` in `sacct` (two hardware threads per core). Budget by `bsc_acct`, not by `AllocTRES`.
 
 ## Arithmetic
 

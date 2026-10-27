@@ -8,7 +8,12 @@ SRC="${1:-}"; DRY=0; [[ "${2:-}" == "--dry-run" || "${1:-}" == "--dry-run" ]] &&
 [[ "$SRC" = /* ]] || SRC="${PROJECTS_DIR}/${SRC}"
 OUT="pulled/$(date -u +%Y%m%dT%H%M%SZ)"
 mkdir -p "$OUT"
-FLAGS=(-av --partial --human-readable); [[ $DRY -eq 1 ]] && FLAGS+=(--dry-run)
+# -rlt not -a: no attempt to set owner/group/perms on the laptop side (fails in sandboxed folders and is pointless here)
+FLAGS=(-rltv --partial --human-readable); [[ $DRY -eq 1 ]] && FLAGS+=(--dry-run)
 echo "rsync ${FLAGS[*]} ${CLUSTER_USER}@${TRANSFER_HOST}:${SRC}/ ${OUT}/"
-keep_awake rsync "${FLAGS[@]}" "${CLUSTER_USER}@${TRANSFER_HOST}:${SRC}/" "${OUT}/"
+rc=0; keep_awake rsync "${FLAGS[@]}" "${CLUSTER_USER}@${TRANSFER_HOST}:${SRC}/" "${OUT}/" || rc=$?
+# exit 23 = "some files/attrs were not transferred": normal for a missing optional source or an attribute the laptop
+# refuses. It is only a failure when nothing arrived.
+if [[ $rc -eq 23 && -n "$(ls -A "$OUT")" ]]; then echo "rsync exit 23 but files arrived; continuing"; rc=0; fi
+if [[ $rc -ne 0 ]]; then rmdir "$OUT" 2>/dev/null || true; echo "pull failed (rsync exit $rc)" >&2; exit "$rc"; fi
 echo "pulled into ${OUT}"
