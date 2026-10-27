@@ -25,5 +25,5 @@ else
   echo "$PY_MODULE" > "${VENV}/.python_module"
   touch "${VENV}/.ready"        # written LAST
 fi
-ln -sfn "$HASH" "${VENV_ROOT}/current"
+ln -s "$HASH" "${VENV_ROOT}/current.tmp.$$" && mv -Tf "${VENV_ROOT}/current.tmp.$$" "${VENV_ROOT}/current"   # atomic switch: no instant without a current
 echo "current -> $(readlink "${VENV_ROOT}/current")"

@@ -22,8 +22,8 @@ RUN_DIR="__SCRATCH_DIR__/runs/${SLURM_JOB_NAME}-${SLURM_ARRAY_JOB_ID}/${SLURM_AR
 mkdir -p "${RUN_DIR}"; cd "${RUN_DIR}"
 echo "node=$(hostname) task=${SLURM_ARRAY_TASK_ID} line='${LINE}' start=$(date -u +%FT%TZ)"
 # Offline venv built by scripts/install_wheels_remote.sh (no internet on the nodes, nothing pip-installs here)
-VENV="$(readlink -f "__VENV_DIR__/current")"   # resolved at start: a later install_wheels.sh never changes this job's venv
-[[ -f "${VENV}/.ready" ]] || { echo "venv not ready: run scripts/install_wheels.sh from the laptop first"; exit 1; }
+VENV="__VENV_DIR__/__VENV_HASH__"   # pinned at render time (render.sh reads ./.venv_hash written by install_wheels.sh): every task of this array uses this one venv
+[[ -f "${VENV}/.ready" ]] || { echo "venv ${VENV} not ready: run scripts/install_wheels.sh from the laptop first"; exit 1; }
 # load the SAME python module the venv was built with (the venv's python is a link into that module tree)
 PY_MODULE="$(cat "${VENV}/.python_module")"
 module load "$PY_MODULE" 2>/dev/null || module load intel mkl "$PY_MODULE"

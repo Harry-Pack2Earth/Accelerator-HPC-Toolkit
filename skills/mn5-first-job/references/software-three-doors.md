@@ -16,9 +16,9 @@ Most founders start at door 2. Go to door 3 only when a GPU is needed. Verificat
 - pip evaluates dependency markers against the LAPTOP. On an ARM Mac a package needed only on x86_64 is silently
   skipped and the cluster install fails with "No matching distribution". Name it explicitly and re-bundle.
 - `install_wheels.sh` installs ONCE from the login node. Never from inside array tasks: `flock` does not serialise
-  across nodes on GPFS. Each bundle gets its own folder and venv named by its content hash, and `VENV_DIR/current`
-  points at the latest; a job resolves `current` when it starts and keeps that venv, so installing while jobs run
-  is safe. Jobs test the `.ready` marker the installer writes last and load the Python module recorded in the venv.
+  across nodes on GPFS. Each bundle gets its own folder and venv named by its content hash; `install_wheels.sh` saves the hash in
+  `./.venv_hash` and `render.sh` pins it into the job, so every task of an array uses the same venv and a later
+  install never changes a queued or running job. Jobs test the `.ready` marker the installer writes last and load the Python module recorded in the venv.
 - `unset PYTHONHOME PYTHONPATH` after `module load`, before activating the venv.
 - The module Python's `sqlite3` is broken; if a dependency imports it, add `pysqlite3-binary` and a `sitecustomize.py`
   that swaps it in.
@@ -43,7 +43,7 @@ The cluster is x86_64. The image must be `linux/amd64`. That is the whole cross-
 | macOS, Intel | same docker mode, no emulation | same code path, native amd64 |
 | Windows x86_64 | Ubuntu under WSL2, Apptainer `.deb` there, native mode | `--fakeroot` fails in WSL2 (binfmt_misc already mounted by Windows interop); the script falls back to `sudo` |
 | Windows on ARM | docker mode under emulation, or a cloud x86_64 VM | |
-| Any | a cheap x86_64 Linux cloud VM with Apptainer: build there, `rsync` from there to the transfer node | a 2-vCPU VM takes ~40 min to compress a 20 GB rootfs; use 8+ vCPUs |
+| Any | a cheap x86_64 Linux cloud VM with Apptainer: build there, `rsync` from there to the transfer node | a 2-vCPU VM takes about 40 min to compress a 20 GB rootfs; 8 vCPUs is comfortable |
 
 Apple-Silicon specifics the team hit:
 - The colima profile that built every production image had `rosetta: false` (qemu binfmt); the script's own comments

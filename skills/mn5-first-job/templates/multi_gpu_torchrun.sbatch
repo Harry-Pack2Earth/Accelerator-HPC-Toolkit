@@ -40,7 +40,9 @@ rc=0; srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" \
     --bind "__PROJECTS_DIR__:__PROJECTS_DIR__" --bind "__SCRATCH_DIR__:__SCRATCH_DIR__" \
     "__SIF__" torchrun --standalone --nproc_per_node="${NGPU}" __ENTRYPOINT__ ${CKPT_OPTS[@]+"${CKPT_OPTS[@]}"} ${RESUME_FLAG} __ARGS__ || rc=$?
 DEST="__RESULTS_DIR__/${SLURM_JOB_NAME}-__RUN_ID__"; mkdir -p "$DEST"
-# rsync, not cp: a requeued job must not nest a second copy; checkpoints stay on scratch (many GB, resumable there)
+# rsync, not cp: a requeued job must not nest a second copy; checkpoints stay on scratch (many GB, resumable there).
+# Write FINAL outputs (the model you keep) into the run directory itself, not under checkpoints/: only the run
+# directory reaches results, and scratch is purged.
 rsync -a --exclude checkpoints --exclude cache "${RUN_DIR}/" "$DEST/"
 echo "end=$(date -u +%FT%TZ) rc=${rc}"
 exit "${rc}"

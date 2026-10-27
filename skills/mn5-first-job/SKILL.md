@@ -101,10 +101,12 @@ then `--go`. Values from `cluster.env` fill in by themselves; the rest you pass:
 | `image_smoke.sbatch` | `CPUS` (= CORES_PER_GPU), `SIF` (absolute path on the cluster) |
 | `single_gpu.sbatch` | `JOB_NAME`, `QOS` (`QOS_DEBUG` to test, `QOS_PROD` to run), `CPUS`, `WALLTIME` (HH:MM:SS), `SIF`, `ENTRYPOINT` (absolute, e.g. `/opt/app/src/train.py`), `ARGS` (may be empty) |
 | `multi_gpu_torchrun.sbatch` | the above plus `GPUS` (2-4), `RUN_ID` (one per training run, reused on resubmits), `CKPT_FLAG` (your script's checkpoint-dir flag, e.g. `--checkpoint-dir`, or empty) and `RESUME_FLAG` (e.g. `--resume`, or empty); the job appends its own checkpoint path |
-| `cpu_array.sbatch` | `JOB_NAME`, `QOS`, `CPUS` (per task), `WALLTIME`, `LAST` (last task index), `CONCURRENT`, `MANIFEST` (absolute), `ENTRYPOINT` (absolute), `ARGS` |
+| `cpu_array.sbatch` | `JOB_NAME`, `QOS`, `CPUS` (per task), `WALLTIME`, `LAST` (last task index), `CONCURRENT`, `MANIFEST` (absolute), `ENTRYPOINT` (absolute), `ARGS`; `VENV_HASH` fills itself from `./.venv_hash` after `install_wheels.sh` |
 
 - `templates/single_gpu.sbatch`: one GPU, one container, one entry point.
-- `templates/multi_gpu_torchrun.sbatch`: 2 to 4 GPUs on ONE node, requeue + resume from checkpoint.
+- `templates/multi_gpu_torchrun.sbatch`: 2 to 4 GPUs on ONE node, requeue + resume from checkpoint. Only the run
+  directory minus `checkpoints/` and `cache/` is copied to results: a final model must be written to the run
+  directory itself, not under `checkpoints/` (which stays on purged scratch).
 - `templates/cpu_array.sbatch`: N independent CPU tasks from a manifest file; no GPU requested.
 
 Start every new job shape on the debug queue with a tiny input (one job at a time there: it allows a single

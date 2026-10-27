@@ -106,5 +106,6 @@ ls -lh "$OUT"
 if [[ "$MODE" == "native" ]]; then "$BIN" sif list "$OUT" | tail -3 || { echo "ERROR: image header unreadable; rebuild with --force" >&2; exit 1; }
 else docker run --rm --platform linux/amd64 -v "$WORK:/work" "$APPTAINER_IMAGE" sif list "/work/${OUT_ABS#"$WORK"/}" | tail -3 || { echo "ERROR: image header unreadable; rebuild with --force" >&2; exit 1; }; fi
 ENV_FILE="${HPC_ENV:-cluster.env}"; IMG_DEST="IMAGES_DIR"
-[[ -f "$ENV_FILE" ]] && IMG_DEST="$(grep -E '^IMAGES_DIR=' "$ENV_FILE" | cut -d= -f2- | tr -d '"')"
+[[ -f "$ENV_FILE" ]] && IMG_DEST="$(grep -E '^IMAGES_DIR=' "$ENV_FILE" | cut -d= -f2- | tr -d '"' || true)"
+[[ -n "$IMG_DEST" ]] || IMG_DEST="IMAGES_DIR"
 echo "Next: scripts/sync_push.sh ${IMG_DEST:-IMAGES_DIR} $OUT --verify    (then templates/image_smoke.sbatch on the debug queue: a stale or broken image fails in seconds)"

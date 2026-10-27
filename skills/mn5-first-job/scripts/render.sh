@@ -24,6 +24,9 @@ if "CONTAINER_MODULE" not in values and values.get("CONTAINER_MODULES"):
     # newest version listed (module avail prints 3.11.5 before 4.1.5)
     def vkey(m): return [(0, int(x)) if x.isdigit() else (1, x) for x in m.split("/")[-1].replace("-", ".").split(".")]
     values["CONTAINER_MODULE"] = sorted(values["CONTAINER_MODULES"].split(), key=vkey)[-1]
+import os
+if "VENV_HASH" not in values and os.path.exists(".venv_hash"):
+    values["VENV_HASH"] = open(".venv_hash").read().strip()   # written by install_wheels.sh: pins the job to one venv
 ep = values.get("ENTRYPOINT")
 if ep is not None and not ep.startswith("/"):
     sys.exit(f"ENTRYPOINT must be absolute (jobs cd into their run dir first): {ep}")

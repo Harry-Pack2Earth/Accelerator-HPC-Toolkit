@@ -49,7 +49,7 @@ TESTING.md                 what has been verified on which machine, and what has
 
 ## Status
 
-See `TESTING.md`. Dry-run paths are tested. Cluster and per-OS build paths are marked verified only once run.
+See `TESTING.md`: it is the only place that states what has been run on which machine.
 
 ## Scope
 

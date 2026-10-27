@@ -2,8 +2,8 @@
 # install_wheels.sh — laptop side: push a wheel bundle and build its venv on the cluster, in one step.
 # Usage: scripts/install_wheels.sh <wheels dir from build_wheels.sh>
 # Reads cluster.env: WHEELS_DIR, VENV_DIR, PYTHON_MODULE. Each bundle goes to WHEELS_DIR/<hash>/ and gets its own venv
-# at VENV_DIR/<hash>/; VENV_DIR/current then points at it. Running jobs keep using the venv they started with, so
-# this is safe while jobs are queued. Runs install_wheels_remote.sh ONCE on the login node (never inside jobs:
+# at VENV_DIR/<hash>/; VENV_DIR/current then points at it. Jobs are rendered with the hash pinned (render.sh reads
+# ./.venv_hash), so a queued or running array never switches venv when a new bundle is installed. Runs install_wheels_remote.sh ONCE on the login node (never inside jobs:
 # flock does not serialise across nodes on GPFS). Jobs test VENV_DIR/current/.ready.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -16,5 +16,6 @@ echo "bundle: $WHEELS (hash $HASH)  ->  ${WHEELS_DIR}/${HASH}   venv: ${VENV_DIR
 "$HERE/sync_push.sh" "${WHEELS_DIR}/${HASH}" "$WHEELS"/*.whl "$WHEELS/requirements.txt" "$WHEELS/.bundle" "$HERE/install_wheels_remote.sh"
 echo "== building the venv on ${LOGIN_HOST} =="
 on_login "bash -l '${WHEELS_DIR}/${HASH}/install_wheels_remote.sh' '${WHEELS_DIR}/${HASH}' '${VENV_DIR}' '${HASH}' '${PYTHON_MODULE}'"
-echo "venv ready: ${VENV_DIR}/current -> ${HASH}. Render templates/cpu_array.sbatch and submit with scripts/submit.sh."
+echo "$HASH" > .venv_hash   # render.sh fills VENV_HASH from this file: a job is pinned to one venv at render time
+echo "venv ready: ${VENV_DIR}/${HASH} (current -> ${HASH}; hash saved in ./.venv_hash). Render templates/cpu_array.sbatch and submit with scripts/submit.sh."
 echo "Old bundles and venvs stay under ${WHEELS_DIR} and ${VENV_DIR} (a few hundred MB each); remove them by hand when no job uses them."
