@@ -28,13 +28,13 @@ echo "node=$(hostname) start=$(date -u +%FT%TZ) gpus=${NGPU} restart=${SLURM_RES
 nvidia-smi
 # A whole 4-GPU node can queue for a day while 2 GPUs are free in minutes. If your training keeps the
 # effective batch constant (batch per GPU x GPUs x grad accumulation), you can take whatever is offered.
-srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" \
+# `|| rc=$?`: under `set -e` a failed srun would end the script here and strand the results on scratch.
+rc=0; srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" \
   singularity exec --nv \
     --bind "__PROJECTS_DIR__:__PROJECTS_DIR__" --bind "__SCRATCH_DIR__:__SCRATCH_DIR__" \
     "__SIF__" torchrun --standalone --nproc_per_node="${NGPU}" __ENTRYPOINT__ \
-      --checkpoint-dir "${RUN_DIR}/checkpoints" --resume __ARGS__
-rc=$?
-mkdir -p "__PROJECTS_DIR__/results"
-cp -r "${RUN_DIR}" "__PROJECTS_DIR__/results/${SLURM_JOB_NAME}-${SLURM_JOB_ID}"
+      --checkpoint-dir "${RUN_DIR}/checkpoints" --resume __ARGS__ || rc=$?
+mkdir -p "__RESULTS_DIR__"
+cp -r "${RUN_DIR}" "__RESULTS_DIR__/${SLURM_JOB_NAME}-${SLURM_JOB_ID}"
 echo "end=$(date -u +%FT%TZ) rc=${rc}"
 exit "${rc}"

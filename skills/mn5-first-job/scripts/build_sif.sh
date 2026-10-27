@@ -7,7 +7,7 @@
 #   docker      macOS, or any machine with Docker but no apptainer: Docker builds the image from the Dockerfile next
 #               to the .def (same content), forced to linux/amd64, then apptainer (in a container) converts it to .sif
 #               straight from the Docker daemon. Nothing runs inside apptainer, so no privileged nesting and no
-#               %post under emulation. Verified on macOS 27 (Oct 2026).
+#               %post under emulation. Status: see TESTING.md in the repository root.
 #   docker-def  the older recipe: apptainer itself inside a privileged amd64 container, building from the .def. It
 #               built every image of the authors on macOS 26 (July to Sept 2026) and stopped working on the same
 #               machine on macOS 27 / current colima ("Failed to spawn stage 1", even for a native arm64 def). Kept
@@ -30,6 +30,9 @@ if [[ -e "$OUT" && $FORCE -eq 0 ]]; then
   echo "       Code changes only reach the cluster through a rebuilt + re-pushed image." >&2; exit 1
 fi
 FLAGS=(); [[ $FORCE -eq 1 ]] && FLAGS+=(--force)
+# NOTE: every "${FLAGS[@]}" below is written ${FLAGS[@]+"${FLAGS[@]}"}: stock macOS /bin/bash is 3.2, where an
+# empty array under `set -u` is an unbound variable and the script would die at the convert step, after the full build.
+START_TS="$(date +%s)"
 if [[ "$MODE" == "auto" ]]; then
   if command -v apptainer >/dev/null 2>&1 || command -v singularity >/dev/null 2>&1; then MODE=native
   elif command -v docker >/dev/null 2>&1; then MODE=docker
@@ -53,13 +56,14 @@ if [[ "$MODE" == "native" ]]; then
   BIN="$(command -v apptainer || command -v singularity)"
   [[ "$(uname -m)" == "x86_64" ]] || { echo "ERROR: native build on $(uname -m) would produce a non-x86_64 image. Use --mode docker (emulated) or an x86_64 Linux machine." >&2; exit 2; }
   echo "== native build with $BIN (--fakeroot) =="
-  if ! "$BIN" build --fakeroot "${FLAGS[@]}" "$OUT" "$DEF" 2> >(tee /tmp/build_sif.err >&2); then
+  if ! "$BIN" build --fakeroot ${FLAGS[@]+"${FLAGS[@]}"} "$OUT" "$DEF" 2> >(tee /tmp/build_sif.err >&2); then
     # Two known failures of --fakeroot: no subuid mapping for the user, and WSL2, where apptainer tries to mount
     # binfmt_misc that Windows interop already mounted ("failed to mount binfmt_misc filesystem: invalid argument").
     # Both are fixed by building as real root, which every Linux/WSL user with sudo can do. Verified Oct 2026.
     if command -v sudo >/dev/null 2>&1; then
       echo "fakeroot build failed ($(grep -m1 -oE 'FATAL.*' /tmp/build_sif.err || echo see above)); retrying with sudo" >&2
-      sudo "$BIN" build "${FLAGS[@]}" "$OUT" "$DEF" && sudo chown "$(id -u):$(id -g)" "$OUT"
+      sudo "$BIN" build ${FLAGS[@]+"${FLAGS[@]}"} "$OUT" "$DEF" || { echo "sudo build failed too; see the messages above" >&2; exit 1; }
+      sudo chown "$(id -u):$(id -g)" "$OUT"
     else
       echo "fakeroot build failed and no sudo: ask the admin to add you to /etc/subuid, or build on another machine" >&2; exit 1
     fi
@@ -75,14 +79,19 @@ elif [[ "$MODE" == "docker" ]]; then
   echo "== 2/2 convert $TAG -> $OUT (apptainer in a container reads the Docker daemon; nothing runs) =="
   docker run --rm --platform linux/amd64 -v /var/run/docker.sock:/var/run/docker.sock \
     -v "$WORK:/work" -v "$CACHE:/root/.apptainer" -w /work "$APPTAINER_IMAGE" \
-    build "${FLAGS[@]}" "/work/${OUT_ABS#"$WORK"/}" "docker-daemon://${TAG}"
+    build ${FLAGS[@]+"${FLAGS[@]}"} "/work/${OUT_ABS#"$WORK"/}" "docker-daemon://${TAG}"
 else
   docker_prep
   echo "== docker-def: apptainer-in-docker ($APPTAINER_IMAGE), platform linux/amd64, workdir $WORK =="
   docker run --rm --privileged --platform linux/amd64 -v "$WORK:/work" -v "$CACHE:/root/.apptainer" -w /work "$APPTAINER_IMAGE" \
-    build "${FLAGS[@]}" "/work/${OUT_ABS#"$WORK"/}" "/work/${DEF_ABS#"$WORK"/}"
+    build ${FLAGS[@]+"${FLAGS[@]}"} "/work/${OUT_ABS#"$WORK"/}" "/work/${DEF_ABS#"$WORK"/}"
 fi
-echo; ls -lh "$OUT"
+echo
+# The image must be NEW: a failed build under --force can leave an older file in place and a wrapper would call it built.
+[[ -s "$OUT" ]] || { echo "ERROR: $OUT is missing or empty after the build" >&2; exit 1; }
+OUT_TS="$(stat -f %m "$OUT" 2>/dev/null || stat -c %Y "$OUT")"
+[[ "$OUT_TS" -ge "$START_TS" ]] || { echo "ERROR: $OUT predates this build (an older image is still there); rebuild with --force" >&2; exit 1; }
+ls -lh "$OUT"
 # A build killed mid-write leaves a .sif that LOOKS complete. Check the header before trusting it.
 if [[ "$MODE" == "native" ]]; then "$BIN" sif list "$OUT" | tail -3 || { echo "ERROR: image header unreadable; rebuild with --force" >&2; exit 1; }
 else docker run --rm --platform linux/amd64 -v "$WORK:/work" "$APPTAINER_IMAGE" sif list "/work/${OUT_ABS#"$WORK"/}" | tail -3 || { echo "ERROR: image header unreadable; rebuild with --force" >&2; exit 1; }; fi

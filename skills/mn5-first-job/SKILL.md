@@ -44,7 +44,10 @@ scripts/preflight.sh --user <cluster username>
 
 It checks ssh and rsync, proves KEY-BASED login works (password prompts make every unattended
 step fail while exiting 0), discovers the project code, queues, quota, budget and QoS limits with
-BSC's own commands, and writes `cluster.env`. Read its NOTE lines to the human. If login fails, the
+BSC's own commands, and writes `cluster.env`: hosts, project, QoS names and limits, `PYTHON_MODULE`,
+and the directories every script and template uses (`PROJECTS_DIR`, `SCRATCH_DIR`, `IMAGES_DIR`,
+`WHEELS_DIR`, `VENV_DIR`, `RESULTS_DIR`). On a tiny projects quota (one real allocation had 512 MB)
+images, wheels, venv and results go under scratch, and preflight says so: pull results promptly. Read its NOTE lines to the human. If login fails, the
 human must create a key and upload it in the BSC accounts portal; the upload REPLACES the
 authorized_keys file, so every key still wanted goes in the same upload. If the allocation shows
 only `acc_*` queues it is GPU-only: re-run with `--login alogin1.bsc.es`.
@@ -65,11 +68,12 @@ If it is not verified, read the `.err` log before changing anything.
 
 1. **Site modules** (`module avail`): fine for a quick stdlib or system-Python job.
 2. **Offline wheel bundle into a venv on GPFS**: CPU work in Python (scikit-learn, boosted trees,
-   data processing). `scripts/build_wheels.sh`, push, `scripts/install_wheels_remote.sh` ONCE from
-   the login node.
+   data processing). `scripts/build_wheels.sh` on the laptop, then `scripts/install_wheels.sh <bundle>`,
+   which pushes it and builds the venv once on the login node (rebuilds only when the bundle's content
+   hash changes). Jobs test `VENV_DIR/.ready`.
 3. **Apptainer image built off the cluster**: anything with a GPU. `scripts/build_sif.sh` on the
-   laptop (or any machine with Docker or Apptainer), push with `--verify`, then prove it with
-   `templates/image_smoke.sbatch` on the debug queue. The cluster is x86_64: an ARM laptop must
+   laptop (or any machine with Docker or Apptainer), `scripts/sync_push.sh "$IMAGES_DIR" <file.sif> --verify`,
+   then prove it with `templates/image_smoke.sbatch` on the debug queue. The cluster is x86_64: an ARM laptop must
    build `linux/amd64`, and import checks inside that emulated build can fail falsely. The image
    is proven only by the image smoke on a GPU node.
 
@@ -98,6 +102,7 @@ TIMEOUT means resubmit the same job with a wall sized from the measured progress
 
 - Never submit without `sbatch --test-only` passing and the cost shown to the human.
 - Never delete on GPFS without listing first, and never `rm -rf` a path you did not create this session.
+  `sync_push.sh --mirror` lists what it would delete and stops; show the human, then add `--confirm-delete`.
 - Never `scancel -u <user>` on your own initiative; ask. Cancelling and resubmitting doubles the spend.
 - Never run anything heavier than `ls`, `cat`, `squeue` on a login node, and never from `/gpfs/home`.
 - Never change an sbatch file, image, wheel bundle or dataset that a queued or running job reads.
@@ -126,9 +131,11 @@ The full list with what actually happened is `references/lessons.md`. The ones t
 ## Files
 
 - `scripts/`: `preflight.sh`, `run_smoke.sh`, `render.sh`, `sync_push.sh`, `sync_pull.sh`, `submit.sh`,
-  `status.sh`, `estimate_cost.sh`, `build_sif.sh`, `build_wheels.sh`, `install_wheels_remote.sh`, `smoke_job.py`
+  `status.sh`, `estimate_cost.sh`, `build_sif.sh`, `build_wheels.sh`, `install_wheels.sh` (laptop side; runs
+  `install_wheels_remote.sh` on the login node), `smoke_job.py`
 - `templates/`: `smoke.sbatch`, `image_smoke.sbatch`, `single_gpu.sbatch`, `multi_gpu_torchrun.sbatch`,
-  `cpu_array.sbatch`, `container.def`, `requirements.example.txt`, `ssh_config.example`
+  `cpu_array.sbatch`, `container.def` + `Dockerfile` (same image, keep them in step), `requirements.example.txt`,
+  `ssh_config.example`
 - `references/`: `lessons.md` (what happened, by class), `bsc-marenostrum5.md` (site facts, labelled
   measured / documented / unverified), `software-three-doors.md` (modules, wheels, images, per-OS builds),
   `troubleshooting.md` (symptom → cause → fix), `budget-and-queues.md` (billing, caps, walls, cost arithmetic)

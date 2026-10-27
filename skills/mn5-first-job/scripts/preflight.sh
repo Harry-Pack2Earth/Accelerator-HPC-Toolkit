@@ -36,14 +36,16 @@ run_remote() {  # run_remote <host> <command...>
 ESC="$(printf '\033')"
 strip_ansi() { sed -E "s/${ESC}\[[0-9;]*[A-Za-z]//g; s/${ESC}\]8;;[^${ESC}]*${ESC}\\\\//g"; }
 SSH_OPTS=(-o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=12)
-# try_hosts <base>: base like glogin1.bsc.es; tries glogin1..4, prints the first that answers, else returns 1.
+# try_hosts <base>: base like glogin1.bsc.es; tries glogin1..4 and sets FOUND_HOST to the first that answers.
+# Returns 1 if none did. Sets LAST_ERR to key | hostkey | net. Runs in THIS shell (not $(...)), so those survive.
 # Login nodes do go down (one refused connections and another timed out on the same morning the rest answered).
 try_hosts() {
   local base="$1" prefix num domain i host out
+  FOUND_HOST=""
   prefix="${base%%[0-9]*}"; num="${base#"$prefix"}"; num="${num%%.*}"; domain="${base#*.}"
   for i in "$num" 1 2 3 4; do
     host="${prefix}${i}.${domain}"; [[ " $TRIED " == *" $host "* ]] && continue; TRIED="$TRIED $host"
-    if out="$(ssh "${SSH_OPTS[@]}" "${USER_NAME}@${host}" hostname 2>&1)"; then echo "$host"; return 0; fi
+    if out="$(ssh "${SSH_OPTS[@]}" "${USER_NAME}@${host}" hostname 2>&1)"; then FOUND_HOST="$host"; return 0; fi
     case "$out" in
       *"Permission denied"*) echo "KEY_REFUSED ${host}: ${out}" >&2; LAST_ERR=key ;;
       *"Host key verification failed"*|*"REMOTE HOST IDENTIFICATION HAS CHANGED"*) echo "HOST_KEY_CHANGED ${host}: the key in ~/.ssh/known_hosts differs from the server's; a human must check with BSC before removing the line" >&2; LAST_ERR=hostkey ;;
@@ -78,12 +80,15 @@ TRIED=""; LAST_ERR=""
 if [[ $DRY -eq 1 ]]; then
   echo "[dry-run] ssh -o BatchMode=yes ${USER_NAME}@${LOGIN_HOST} hostname"; echo "[dry-run] ssh -o BatchMode=yes ${USER_NAME}@${TRANSFER_HOST} hostname"
 else
-  if ! LOGIN_HOST="$(try_hosts "$LOGIN_HOST")"; then
+  LOGIN_BASE="$LOGIN_HOST"; LOGIN_HOST=""
+  if try_hosts "$LOGIN_BASE"; then LOGIN_HOST="$FOUND_HOST"
+  else
     # the other login family: GPU-only allocations live on alogin*, CPU ones on glogin*
-    case "$LOGIN_HOST" in glogin*) ALT="alogin1.${LOGIN_HOST#*.}" ;; *) ALT="glogin1.${LOGIN_HOST#*.}" ;; esac
-    LOGIN_HOST="$(try_hosts "$ALT")" || true
+    case "$LOGIN_BASE" in glogin*) ALT="alogin1.${LOGIN_BASE#*.}" ;; *) ALT="glogin1.${LOGIN_BASE#*.}" ;; esac
+    if try_hosts "$ALT"; then LOGIN_HOST="$FOUND_HOST"; fi
   fi
-  TRANSFER_HOST="$(try_hosts "$TRANSFER_HOST")" || true
+  TRANSFER_BASE="$TRANSFER_HOST"; TRANSFER_HOST=""
+  if try_hosts "$TRANSFER_BASE"; then TRANSFER_HOST="$FOUND_HOST"; fi
   if [[ -z "$LOGIN_HOST" || -z "$TRANSFER_HOST" ]]; then
     case "$LAST_ERR" in
       key) cat >&2 <<'MSG'
@@ -130,8 +135,8 @@ if [[ -z "$PROJECT" ]]; then echo "Could not read a project code from bsc_projec
 echo "project=$PROJECT kind=$KIND qos_debug=${QOS_DEBUG:-?} qos_prod=${QOS_PROD:-?}"
 if [[ "$KIND" == "acc" && "$LOGIN_HOST" == glogin* && $DRY -eq 0 ]]; then
   echo "NOTE: this allocation is GPU-only (acc_* queues); jobs must be submitted from an ACC login node. Switching."
-  LOGIN_HOST="$(try_hosts "alogin1.${LOGIN_HOST#*.}")" || { echo "no ACC login node answered" >&2; exit 3; }
-  echo "login=${LOGIN_HOST}"
+  try_hosts "alogin1.${LOGIN_HOST#*.}" || { echo "no ACC login node answered" >&2; exit 3; }
+  LOGIN_HOST="$FOUND_HOST"; echo "login=${LOGIN_HOST}"
 fi
 ACCT_RAW="$(run_remote "$LOGIN_HOST" bsc_acct)"; echo "bsc_acct:"; echo "$ACCT_RAW"
 QOS_LIMITS="$(run_remote "$LOGIN_HOST" "sacctmgr -n -P show qos '${QOS_PROD}' format=Name,MaxWall,MaxSubmitPU,MaxJobsPU 2>/dev/null" | grep -E '^[a-z]' | head -1)"
@@ -139,12 +144,14 @@ echo "qos limits (Name|MaxWall|MaxSubmitPU|MaxJobsPU): ${QOS_LIMITS:-not readabl
 QOS_MAX_SUBMIT="$(echo "$QOS_LIMITS" | cut -d'|' -f3)"
 [[ -n "$QOS_MAX_WALL" ]] || QOS_MAX_WALL="$(echo "$QOS_LIMITS" | cut -d'|' -f2)"
 echo "NOTE: MaxSubmitPU counts EVERY array task, pending or running. Size each submission against the whole queue."
-BIG_FILES_DIR="/gpfs/projects/${PROJECT}/${USER_NAME}/big"
+BIG_FILES_DIR="/gpfs/projects/${PROJECT}/${USER_NAME}/big"; RESULTS_DIR="/gpfs/projects/${PROJECT}/${USER_NAME}/results"
 if [[ -n "$PROJECTS_QUOTA_GB" ]] && awk "BEGIN{exit !($PROJECTS_QUOTA_GB < 20)}"; then
-  BIG_FILES_DIR="/gpfs/scratch/${PROJECT}/${USER_NAME}/big"
-  echo "NOTE: gpfs_projects quota is only ${PROJECTS_QUOTA_GB} GB. Images, datasets and venvs go to ${BIG_FILES_DIR} (scratch: not backed up)."
-  echo "      Ask BSC support to raise the projects quota; until then keep results small and pull them promptly."
+  BIG_FILES_DIR="/gpfs/scratch/${PROJECT}/${USER_NAME}/big"; RESULTS_DIR="/gpfs/scratch/${PROJECT}/${USER_NAME}/results"
+  echo "NOTE: gpfs_projects quota is only ${PROJECTS_QUOTA_GB} GB (one real allocation had 512 MB). Images, wheels, venv AND results"
+  echo "      go under scratch (${BIG_FILES_DIR%/big}), which is not backed up: pull results promptly. Ask BSC support to raise the quota."
 fi
+# the newest python module on the system; the venv is built with it and every CPU job loads the same one
+PYTHON_MODULE="$(echo "$PY_MODULES" | tr ' ' '\n' | grep -E '^python/' | sort -t/ -k2,2V | tail -1)"
 
 say "4. writing $OUT"
 cat > "$OUT" <<ENV
@@ -164,7 +171,12 @@ LAPTOP_ARCH="${ARCH}"
 PROJECTS_DIR="/gpfs/projects/${PROJECT}/${USER_NAME}"
 SCRATCH_DIR="/gpfs/scratch/${PROJECT}/${USER_NAME}"
 BIG_FILES_DIR="${BIG_FILES_DIR}"
+IMAGES_DIR="${BIG_FILES_DIR}/images"
+WHEELS_DIR="${BIG_FILES_DIR}/wheels"
+VENV_DIR="${BIG_FILES_DIR}/venv"
+RESULTS_DIR="${RESULTS_DIR}"
 PROJECTS_QUOTA_GB="${PROJECTS_QUOTA_GB}"
+PYTHON_MODULE="${PYTHON_MODULE}"
 PYTHON_MODULES="${PY_MODULES}"
 CONTAINER_MODULES="${SING_MODULES}"
 # cores billed per GPU on the accelerated partition (check against bsc_acct after your first GPU job)

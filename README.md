@@ -32,15 +32,16 @@ Then, in a working folder of your own, tell the agent: "Use the mn5-first-job sk
 
 - A BSC account (username in the welcome email) and an SSH key uploaded in the BSC accounts portal.
 - `ssh` and `rsync` on the laptop. Windows: an Ubuntu (WSL2) terminal. macOS: `brew install rsync`.
-- For GPU images: Docker Desktop (Apple Silicon: enable Rosetta) or Apptainer on Linux/WSL2.
+- For GPU images: Docker Desktop or colima on macOS, Apptainer on Linux/WSL2 (see `references/software-three-doors.md`).
+- Scripts run on stock macOS `/bin/bash` 3.2 as well as bash 5.
 
 ## Layout
 
 ```
 skills/mn5-first-job/
   SKILL.md                 the procedure and the guardrails (the agent reads this first)
-  scripts/                 preflight, smoke loop, push/pull, submit, status, cost, image and wheel builds
-  templates/               sbatch files (smoke, image smoke, single GPU, multi-GPU, CPU array), container.def
+  scripts/                 preflight, smoke loop, push/pull, submit, status, cost, image build, wheel bundle + venv install
+  templates/               sbatch files (smoke, image smoke, single GPU, multi-GPU, CPU array), container.def + Dockerfile
   references/              lessons.md, bsc-marenostrum5.md, software-three-doors.md, troubleshooting.md, budget-and-queues.md
 TESTING.md                 what has been verified on which machine, and what has not
 ```

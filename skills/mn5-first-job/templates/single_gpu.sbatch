@@ -25,12 +25,12 @@ echo "node=$(hostname) start=$(date -u +%FT%TZ) image=__SIF__"
 nvidia-smi                                     # driver + CUDA header on the record, every run
 # The container runs as you, not root; code and data must be readable by your uid.
 # Code comes from the image: a stale .sif runs old code with no error. Rebuild + re-push after code changes.
-srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" \
+# `|| rc=$?`: under `set -e` a failed srun would end the script here and strand the results on scratch.
+rc=0; srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" \
   singularity exec --nv \
     --bind "__PROJECTS_DIR__:__PROJECTS_DIR__" --bind "__SCRATCH_DIR__:__SCRATCH_DIR__" \
-    "__SIF__" python __ENTRYPOINT__ __ARGS__
-rc=$?
-mkdir -p "__PROJECTS_DIR__/results"
-cp -r "${RUN_DIR}" "__PROJECTS_DIR__/results/"
+    "__SIF__" python __ENTRYPOINT__ __ARGS__ || rc=$?
+mkdir -p "__RESULTS_DIR__"
+cp -r "${RUN_DIR}" "__RESULTS_DIR__/"
 echo "end=$(date -u +%FT%TZ) rc=${rc}"
 exit "${rc}"

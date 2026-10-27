@@ -5,7 +5,7 @@ Nothing installs on the cluster. No internet on the nodes, no root. Everything a
 | Door | For | How | Proof |
 |---|---|---|---|
 | 1. Site modules | stdlib Python, system tools | `module avail`, `module load` in the sbatch | smoke job |
-| 2. Offline wheel bundle → venv on GPFS | CPU Python: pandas, scikit-learn, boosted trees | `scripts/build_wheels.sh` → push → `scripts/install_wheels_remote.sh` once from the login node | a 1-task array on the debug queue |
+| 2. Offline wheel bundle → venv on GPFS | CPU Python: pandas, scikit-learn, boosted trees | `scripts/build_wheels.sh` on the laptop → `scripts/install_wheels.sh <bundle>` (pushes, builds the venv once on the login node) | a 2-task `cpu_array` on the debug queue |
 | 3. Apptainer image | anything with a GPU | `scripts/build_sif.sh` off-cluster → push `--verify` | `templates/image_smoke.sbatch` on a GPU node |
 
 Most founders start at door 2. Go to door 3 only when a GPU is needed.
@@ -15,8 +15,10 @@ Most founders start at door 2. Go to door 3 only when a GPU is needed.
 - Target the cluster's Python (`python/3.12.1` → `cp312`, `manylinux_2_28_x86_64`). The script does this on any laptop.
 - pip evaluates dependency markers against the LAPTOP. On an ARM Mac a package needed only on x86_64 is silently
   skipped and the cluster install fails with "No matching distribution". Name it explicitly and re-bundle.
-- Install ONCE from the login node. Never from inside array tasks: `flock` does not serialise across nodes on GPFS.
-  Jobs test the `.ready` marker the installer writes last.
+- `install_wheels.sh` installs ONCE from the login node. Never from inside array tasks: `flock` does not serialise
+  across nodes on GPFS. Jobs test the `.ready` marker the installer writes last. The venv records the bundle's
+  content hash and the Python module it was built with; a changed bundle rebuilds the venv, and `cpu_array.sbatch`
+  loads that same module before activating.
 - `unset PYTHONHOME PYTHONPATH` after `module load`, before activating the venv.
 - The module Python's `sqlite3` is broken; if a dependency imports it, add `pysqlite3-binary` and a `sitecustomize.py`
   that swaps it in.
@@ -26,7 +28,7 @@ Most founders start at door 2. Go to door 3 only when a GPU is needed.
 - Base on a vendor image whose torch, CUDA and cuDNN are matched (NGC `nvcr.io/nvidia/pytorch:<dated tag>`). Pin the
   tag. Do not list torch in requirements. Pin numpy to the base's version.
 - `%post`: `chmod -R a+rX` on everything you add. The cluster runs the container as your uid.
-- Push with `scripts/sync_push.sh images <file.sif> --verify`. Non-negotiable: a truncated image kills every job at mount.
+- Push with `scripts/sync_push.sh "$IMAGES_DIR" <file.sif> --verify`. Non-negotiable: a truncated image kills every job at mount.
 - Prove it with the image smoke on the debug queue. The login node cannot run images.
 - After every code change: rebuild, re-push, re-smoke. A stale image runs old code with no error.
 

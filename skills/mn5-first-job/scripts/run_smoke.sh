@@ -10,7 +10,7 @@ BUILD="build"; mkdir -p "$BUILD"
 "$HERE/render.sh" "$SKILL/templates/smoke.sbatch" "$BUILD/smoke.sbatch"
 cp "$SKILL/scripts/smoke_job.py" "$BUILD/smoke_job.py"
 if [[ $DRY -eq 1 ]]; then
-  echo "[dry-run] would push build/smoke.sbatch + smoke_job.py to ${PROJECTS_DIR}/smoke, submit on ${LOGIN_HOST} with qos ${QOS_DEBUG}, poll, pull ${PROJECTS_DIR}/results/smoke-<id>"
+  echo "[dry-run] would push build/smoke.sbatch + smoke_job.py to ${PROJECTS_DIR}/smoke, submit on ${LOGIN_HOST} with qos ${QOS_DEBUG}, poll, pull ${RESULTS_DIR}/smoke-<id>"
   cat "$BUILD/smoke.sbatch"; exit 0
 fi
 "$HERE/sync_push.sh" smoke "$BUILD/smoke.sbatch" "$BUILD/smoke_job.py"
@@ -25,7 +25,7 @@ for _ in $(seq 1 120); do
   esac
 done
 echo; echo "state=${STATE:-unknown}"
-"$HERE/sync_pull.sh" "results/smoke-${JOB_ID}"
+"$HERE/sync_pull.sh" "${RESULTS_DIR}/smoke-${JOB_ID}"
 PULLED="$(ls -td pulled/* | head -1)"
 if [[ -f "${PULLED}/smoke_result.json" ]] && grep -q '"machine"' "${PULLED}/smoke_result.json"; then
   echo "SMOKE_VERIFIED: ${PULLED}/smoke_result.json"; python3 -c "import json;d=json.load(open('${PULLED}/smoke_result.json'));print({k:d[k] for k in ('hostname','python','machine','cpu_count_visible','nvidia_smi')})"

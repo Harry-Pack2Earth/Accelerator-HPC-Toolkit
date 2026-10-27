@@ -21,6 +21,6 @@ echo "node=$(hostname) start=$(date -u +%FT%TZ) cpus=${SLURM_CPUS_PER_TASK}"
 nvidia-smi || echo "(no GPU on this node; fine for the smoke)"
 # Pass --cpus-per-task to srun explicitly: on this cluster srun does not inherit it from #SBATCH.
 srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" python3 smoke_job.py
-mkdir -p "__PROJECTS_DIR__/results"
-cp -r "${RUN_DIR}" "__PROJECTS_DIR__/results/"        # scratch is not backed up; results live in projects
+mkdir -p "__RESULTS_DIR__"
+cp -r "${RUN_DIR}" "__RESULTS_DIR__/"        # scratch job dirs are not backed up; results go to RESULTS_DIR (projects, or scratch/results on a tiny quota)
 echo "end=$(date -u +%FT%TZ)"

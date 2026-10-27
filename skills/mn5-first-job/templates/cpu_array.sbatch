@@ -22,12 +22,15 @@ RUN_DIR="__SCRATCH_DIR__/runs/${SLURM_JOB_NAME}-${SLURM_ARRAY_JOB_ID}/${SLURM_AR
 mkdir -p "${RUN_DIR}"; cd "${RUN_DIR}"
 echo "node=$(hostname) task=${SLURM_ARRAY_TASK_ID} line='${LINE}' start=$(date -u +%FT%TZ)"
 # Offline venv built by scripts/install_wheels_remote.sh (no internet on the nodes, nothing pip-installs here)
-[[ -f "__PROJECTS_DIR__/venv/.ready" ]] || { echo "venv not ready: run install_wheels_remote.sh on the login node first"; exit 1; }
-unset PYTHONHOME PYTHONPATH          # a loaded python module exports these and they shadow the venv
-source "__PROJECTS_DIR__/venv/bin/activate"
-srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" python __ENTRYPOINT__ ${LINE}
-rc=$?
-mkdir -p "__PROJECTS_DIR__/results/${SLURM_JOB_NAME}-${SLURM_ARRAY_JOB_ID}"
-cp -r "${RUN_DIR}" "__PROJECTS_DIR__/results/${SLURM_JOB_NAME}-${SLURM_ARRAY_JOB_ID}/"
+[[ -f "__VENV_DIR__/.ready" ]] || { echo "venv not ready: run scripts/install_wheels.sh from the laptop first"; exit 1; }
+# load the SAME python module the venv was built with (the venv's python is a link into that module tree)
+PY_MODULE="$(cat "__VENV_DIR__/.python_module")"
+module load "$PY_MODULE" 2>/dev/null || module load intel mkl "$PY_MODULE"
+unset PYTHONHOME PYTHONPATH          # the module exports these and they shadow the venv
+source "__VENV_DIR__/bin/activate"
+# `|| rc=$?`: under `set -e` a failed srun would end the script here and strand the results on scratch.
+rc=0; srun --ntasks=1 --cpus-per-task="${SLURM_CPUS_PER_TASK}" python __ENTRYPOINT__ ${LINE} || rc=$?
+mkdir -p "__RESULTS_DIR__/${SLURM_JOB_NAME}-${SLURM_ARRAY_JOB_ID}"
+cp -r "${RUN_DIR}" "__RESULTS_DIR__/${SLURM_JOB_NAME}-${SLURM_ARRAY_JOB_ID}/"
 echo "end=$(date -u +%FT%TZ) rc=${rc}"
 exit "${rc}"
